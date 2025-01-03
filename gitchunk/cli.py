@@ -133,6 +133,19 @@ def instance_files(repo, max_tamaño_archivo_mb):
     return archivos_nuevos, archivos_modificados, archvivos_invalidos
 
 
+def sleep_progress(seconds):
+    minutes = int(timedelta(seconds=seconds).total_seconds() // 60)
+
+    logger.info(f"Esperando {minutes} minutos antes de continuar...")
+    count = 0
+    for i in range(int(seconds), 0, -1):
+        time.sleep(1)
+        count += 1
+        if count % 60 == 0:
+            minutes -= 1
+            logger.info(f"Esperando {minutes} minutos antes de continuar...")
+
+
 def main():
     logger.info("Iniciando gitchunk...")
     for file in Path("tasks").glob("*.txt"):
@@ -194,18 +207,23 @@ def main():
         for commit in commits_pendientes[::-1]:
             commit_hash = commit.hexsha
             message = commit.message
-            date = commit.authored_datetime.strftime("%Y-%m-%d %H:%M:%S")
+            date = commit.authored_datetime.strftime("%d-%m-%Y %I:%M:%S %p")
             author = commit.author.name
+            logger.info(
+                f"Subiendo commit {commit_hash} ({date}) de {author}: {message}"
+            )
+
             refspec = f"{commit_hash}:refs/heads/{rama_name}"
             try:
-                repo.git.push(remoto, refspec, "--force-with-lease")
+                r = repo.git.push(remoto, refspec, "--force-with-lease")
                 logger.info(f"Push exitoso del commit {commit_hash} a {rama_name}.")
             except git.GitCommandError as e:
                 logger.error(f"Error al hacer push del commit {commit_hash}: {e}")
             except Exception as e:
                 logger.exception(f"Error inesperado durante el push: {e}")
 
-            time.sleep(timedelta(minutes=5).total_seconds())
+            sleep_progress(timedelta(minutes=5).total_seconds())
+
     logger.info("Finalizando gitchunk.")
 
 

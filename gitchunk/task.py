@@ -37,8 +37,6 @@ class Task:
         self.author_email = author_email
         self.author = Actor(name=author_name, email=author_email)
 
-        logger.info(f"Configuración de la tarea: {self.__dict__}")
-
     @classmethod
     def from_filepath(cls, config_path: Path):
         logger.info(f"Leyendo archivo de configuración: {config_path}")
