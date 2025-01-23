@@ -158,9 +158,9 @@ def instance_files(repo, max_tamaño_archivo_mb):
         else:
             archvivos_invalidos.append(path)
     for diff_item in repo.index.diff(None):
-        change_type = diff_item.change_type.lower()
-        if change_type == "d":
-            continue
+        # change_type = diff_item.change_type.lower()
+        # if change_type == "d":
+        #     continue
         path = folder / diff_item.a_path
         file_size = path.stat().st_size
         if file_size <= max_tamaño_archivo_mb:
@@ -201,6 +201,7 @@ def main():
         BRANCH_NAME = config.branch_name
         COMMITTER = config.committer
         COMMAND_REMOTE = config.command_remote
+        TAG = config.tag
         logger.info(f"Configuración cargada: {config.__dict__}")
 
         try:
@@ -213,7 +214,9 @@ def main():
             continue
 
         logger.info("Reseteando archivos añadidos al índice...")
-        repo.index.reset()
+
+        if not "No commits yet" in repo.git.execute("git status"):
+            repo.index.reset()
 
         archivos_nuevos, archivos_modificados, archvivos_invalidos = instance_files(
             repo, MAX_FILE_SIZE_MB
@@ -245,14 +248,31 @@ def main():
                 logger.info(f"Commit creado exitosamente.")
             except Exception as e:
                 logger.exception(f"Error al crear el commit: {e}")
+        if TAG:
+            if not TAG in repo.tags:
+                logger.info(f"Creando tag: {TAG}")
+                try:
+                    repo.create_tag(TAG)
+                    logger.info(f"Tag creado exitosamente.")
+                except git.GitCommandError as e:
+                    logger.error(f"Error al crear el tag: {e}")
 
         if COMMAND_REMOTE:
-            logger.info(f"Ejecutando comando remoto: {COMMAND_REMOTE}")
             try:
-                repo.git.execute(COMMAND_REMOTE)
-                logger.info("Comando remoto ejecutado con éxito.")
+                if repo.remote(REMOTE_NAME):
+                    url = COMMAND_REMOTE.split()[-1]
+                    origin_urls = list(repo.remote(REMOTE_NAME).urls)
+                    if url not in origin_urls:
+                        logger.info(f"Actualizando URL del remoto {REMOTE_NAME}...")
+                        config_lock_path = FOLDER / ".git" / "config.lock"
+                        if config_lock_path.exists():
+                            config_lock_path.unlink()
+                        repo.remote(REMOTE_NAME).set_url(url)
             except git.GitCommandError as e:
                 logger.error(f"Error al ejecutar el comando remoto: {e}")
+            except ValueError:
+                repo.git.execute(COMMAND_REMOTE)
+                logger.info(f"Comando ejecutado: {COMMAND_REMOTE}")
 
         remoto = REMOTE_NAME
         rama_name = BRANCH_NAME
@@ -283,11 +303,15 @@ def main():
                 logger.info(f"Push exitoso del commit {commit_hash} a {rama_name}.")
             except git.GitCommandError as e:
                 logger.error(f"Error al hacer push del commit {commit_hash}: {e}")
+                exit()
             except Exception as e:
                 logger.exception(f"Error inesperado durante el push: {e}")
 
             if index < len(commits_pendientes):
                 sleep_progress(timedelta(minutes=5).total_seconds())
+        if TAG:
+            logger.info(f"Subiendo todas las etiquetas a {remoto}...")
+            repo.git.push(remoto, "--tags")
 
     logger.info("Finalizando gitchunk.")
 

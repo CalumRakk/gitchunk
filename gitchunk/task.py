@@ -27,6 +27,7 @@ class Task:
         author_name: str = None,
         author_email: str = None,
         command_remote: str = None,
+        tag: str = None,
     ):
         self.task_path = check_file(task_path)
         self.local_dir = check_file(local_dir)
@@ -39,6 +40,7 @@ class Task:
         self.author = Actor(name=author_name, email=author_email)
         self.committer = Actor(name=author_name, email=author_email)
         self.command_remote = command_remote
+        self.tag = tag
 
     @classmethod
     def from_filepath(cls, config_path: Path):
