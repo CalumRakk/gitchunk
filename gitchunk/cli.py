@@ -158,6 +158,9 @@ def instance_files(repo, max_tamaño_archivo_mb):
         else:
             archvivos_invalidos.append(path)
     for diff_item in repo.index.diff(None):
+        change_type = diff_item.change_type.lower()
+        if change_type == "d":
+            continue
         path = folder / diff_item.a_path
         file_size = path.stat().st_size
         if file_size <= max_tamaño_archivo_mb:
@@ -182,7 +185,7 @@ def sleep_progress(seconds):
 
 def main():
     logger.info("Iniciando gitchunk...")
-    for file in Path("tasks").glob("*.txt"):
+    for file in Path("tasks").rglob("*.txt"):
         logger.info(f"Procesando archivo de configuración: {file}")
         try:
             config = Task.from_filepath(file)
@@ -197,6 +200,7 @@ def main():
         REMOTE_NAME = config.remote_name
         BRANCH_NAME = config.branch_name
         COMMITTER = config.committer
+        COMMAND_REMOTE = config.command_remote
         logger.info(f"Configuración cargada: {config.__dict__}")
 
         try:
@@ -207,6 +211,9 @@ def main():
         except Exception as e:
             logger.exception(f"Error inesperado al inicializar el repositorio: {e}")
             continue
+
+        logger.info("Reseteando archivos añadidos al índice...")
+        repo.index.reset()
 
         archivos_nuevos, archivos_modificados, archvivos_invalidos = instance_files(
             repo, MAX_FILE_SIZE_MB
@@ -238,6 +245,14 @@ def main():
                 logger.info(f"Commit creado exitosamente.")
             except Exception as e:
                 logger.exception(f"Error al crear el commit: {e}")
+
+        if COMMAND_REMOTE:
+            logger.info(f"Ejecutando comando remoto: {COMMAND_REMOTE}")
+            try:
+                repo.git.execute(COMMAND_REMOTE)
+                logger.info("Comando remoto ejecutado con éxito.")
+            except git.GitCommandError as e:
+                logger.error(f"Error al ejecutar el comando remoto: {e}")
 
         remoto = REMOTE_NAME
         rama_name = BRANCH_NAME

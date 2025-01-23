@@ -26,6 +26,7 @@ class Task:
         max_batch_size_bytes: int = 300 * 1024 * 1024,
         author_name: str = None,
         author_email: str = None,
+        command_remote: str = None,
     ):
         self.task_path = check_file(task_path)
         self.local_dir = check_file(local_dir)
@@ -37,6 +38,7 @@ class Task:
         self.author_email = author_email
         self.author = Actor(name=author_name, email=author_email)
         self.committer = Actor(name=author_name, email=author_email)
+        self.command_remote = command_remote
 
     @classmethod
     def from_filepath(cls, config_path: Path):
