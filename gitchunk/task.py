@@ -22,8 +22,8 @@ class Task:
         local_dir: Union[Path, str],
         remote_name: str = "origin",
         branch_name: str = "master",
-        max_file_size_mb: int = 90,
-        max_batch_size_mb: int = 300,
+        max_file_size_bytes: int = 90 * 1024 * 1024,
+        max_batch_size_bytes: int = 300 * 1024 * 1024,
         author_name: str = None,
         author_email: str = None,
     ):
@@ -31,11 +31,12 @@ class Task:
         self.local_dir = check_file(local_dir)
         self.remote_name = remote_name
         self.branch_name = branch_name
-        self.max_file_size_mb = max_file_size_mb
-        self.max_batch_size_mb = max_batch_size_mb
+        self.max_file_size_bytes = max_file_size_bytes
+        self.max_batch_size_bytes = max_batch_size_bytes
         self.author_name = author_name
         self.author_email = author_email
         self.author = Actor(name=author_name, email=author_email)
+        self.committer = Actor(name=author_name, email=author_email)
 
     @classmethod
     def from_filepath(cls, config_path: Path):

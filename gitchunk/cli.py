@@ -3,7 +3,7 @@ from datetime import datetime
 import git
 from git import Repo
 import logging
-
+from typing import Union
 from pathlib import Path
 import time
 from datetime import timedelta
@@ -23,10 +23,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def convertir_a_mb(bytes):
-    return bytes / (1024 * 1024)
-
-
 def obtener_archivos(folder: Path, max_tamaño_archivo_mb):
     logger.debug(f"Buscando archivos en: {folder}")
     if isinstance(folder, str):
@@ -41,7 +37,7 @@ def obtener_archivos(folder: Path, max_tamaño_archivo_mb):
             logger.debug(f"Excluyendo directorio .git en: {root}")
         for file in files:
             path = Path(root) / file
-            tamaño_mb = convertir_a_mb(path.stat().st_size)
+            tamaño_mb = path.stat().st_size
             if tamaño_mb <= max_tamaño_archivo_mb:
                 archivos_validos.append((path, tamaño_mb))
                 logger.debug(f"Archivo válido: {path} ({tamaño_mb:.2f} MB)")
@@ -111,21 +107,59 @@ def obtener_estado_archivo(repo, archivo):
     return "sin_cambios"
 
 
+def check_git_folder(folder: Union[Path, str]) -> bool:
+    """
+    Comprueba si una subcarpeta contiene una .git.
+
+    Args:
+        folder (Path): Carpeta raíz a buscar.
+
+    Returns:
+        bool: Verdadero si se encuentra una carpeta .git, falso en caso contrario.
+    """
+    if isinstance(folder, str):
+        folder = Path(folder)
+
+    for root, dirs, files in os.walk(folder, topdown=True):
+        if ".git" in dirs and root != str(folder):
+            return True
+    return False
+
+
 def instance_files(repo, max_tamaño_archivo_mb):
+    """
+    Dado un repositorio Git y un tamaño máximo de archivo en MB,
+    devuelve tres listas: archivos nuevos, archivos modificados y archivos inválidos.
+    Un archivo es inválido si su tamaño es mayor al especificado.
+
+    Args:
+        repo: Objeto del repositorio Git.
+        max_tamaño_archivo_mb: Tamaño máximo permitido para un archivo en MB.
+
+    Returns:
+        tuple: Tres listas de tuplas (ruta del archivo Path, tamaño en MB).
+    """
+
+    if check_git_folder(repo.working_dir):
+        # repo.untracked_files no devuelve los archivos de una subcarpeta si esta tiene una carpeta .git
+        raise ValueError(
+            "La carpeta de trabajo contiene una carpeta .git. No se puede continuar."
+        )
+
     archivos_nuevos = []
     archivos_modificados = []
     archvivos_invalidos = []
     folder = Path(repo.working_dir)
     for path_string in repo.untracked_files:
         path = folder / path_string
-        file_size = convertir_a_mb(path.stat().st_size)
+        file_size = path.stat().st_size
         if file_size <= max_tamaño_archivo_mb:
             archivos_nuevos.append((path, file_size))
         else:
             archvivos_invalidos.append(path)
     for diff_item in repo.index.diff(None):
         path = folder / diff_item.a_path
-        file_size = convertir_a_mb(path.stat().st_size)
+        file_size = path.stat().st_size
         if file_size <= max_tamaño_archivo_mb:
             archivos_modificados.append((path, file_size))
         else:
@@ -157,11 +191,12 @@ def main():
             continue
 
         FOLDER = config.local_dir
-        MAX_FILE_SIZE_MB = config.max_file_size_mb
-        MAX_BATCH_SIZE_MB = config.max_batch_size_mb
+        MAX_FILE_SIZE_MB = config.max_file_size_bytes
+        MAX_BATCH_SIZE_MB = config.max_batch_size_bytes
         AUTHOR = config.author
         REMOTE_NAME = config.remote_name
         BRANCH_NAME = config.branch_name
+        COMMITTER = config.committer
         logger.info(f"Configuración cargada: {config.__dict__}")
 
         try:
@@ -193,8 +228,13 @@ def main():
             message = f"{date} - Copia de archivos por lote ({i}/{len(lotes)}) ({len(lote)} archivos)"
             logger.info(f"Creando commit: {message}")
             try:
+                if len(add_files) > 200:
+                    logger.info(
+                        f"Creando un commit de {len(add_files)} archivos, esto podrá tardar..."
+                    )
+
                 repo.index.add(add_files)
-                repo.index.commit(message, author=AUTHOR)
+                repo.index.commit(message, author=AUTHOR, committer=COMMITTER)
                 logger.info(f"Commit creado exitosamente.")
             except Exception as e:
                 logger.exception(f"Error al crear el commit: {e}")
@@ -202,9 +242,18 @@ def main():
         remoto = REMOTE_NAME
         rama_name = BRANCH_NAME
         rama_remota = f"{remoto}/{rama_name}"
-        commits_pendientes = list(repo.iter_commits(f"{rama_remota}..{rama_name}"))
+        if not repo.remote(remoto):
+            logger.info(f"Remoto {remoto} no encontrado. Agregando...")
+            exit()
+
+        if len(repo.remotes[remoto].refs) > 0:
+            commits_pendientes = list(repo.iter_commits(f"{rama_remota}..{rama_name}"))
+        else:
+            commits_pendientes = list(repo.iter_commits(f"{rama_name}"))
+
         logger.info(f"Hay {len(commits_pendientes)} commits pendientes para subir.")
-        for commit in commits_pendientes[::-1]:
+
+        for index, commit in enumerate(commits_pendientes[::-1], start=1):
             commit_hash = commit.hexsha
             message = commit.message
             date = commit.authored_datetime.strftime("%d-%m-%Y %I:%M:%S %p")
@@ -222,7 +271,8 @@ def main():
             except Exception as e:
                 logger.exception(f"Error inesperado durante el push: {e}")
 
-            sleep_progress(timedelta(minutes=5).total_seconds())
+            if index < len(commits_pendientes):
+                sleep_progress(timedelta(minutes=5).total_seconds())
 
     logger.info("Finalizando gitchunk.")
 
