@@ -55,14 +55,24 @@ class Task:
 
         if isinstance(config_path, str):
             config_path = Path(config_path)
+        elif isinstance(config_path, None):
+            logger.error("El path debe ser proporcionado.")
+            raise ValueError("El path debe ser proporcionado.")
+
+        if not config_path.exists():
+            logger.error(f"El archivo de configuración {config_path} no existe.")
+            raise FileNotFoundError(
+                f"El archivo de configuración {config_path} no existe."
+            )
 
         file = config_path.read_text()
         config = cls._parsed_content(file)[0]
+        logger.info("Instanciando tarea a partir de archivo de configuración.")
         return cls(task_path=config_path, **config)
 
     @classmethod
     def from_dict(cls, config: dict):
-        logger.info(f"Leyendo config: {config}")
+        logger.info(f"Instanciando tarea a partir de diccionario.")
 
         if not isinstance(config, dict):
             raise TypeError("El config debe ser un diccionario.")
@@ -70,6 +80,8 @@ class Task:
 
     @classmethod
     def _parsed_content(cls, content: str) -> list[dict]:
+        logger.info("Parseando contenido del archivo de configuración.")
+
         if not isinstance(content, str):
             raise TypeError("El contenido debe ser una cadena de texto.")
 
