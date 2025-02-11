@@ -77,13 +77,20 @@ def agrupar_por_lotes(archivos, max_tamaño_lote_mb):
 
 
 def add_files(lote, repo: Repo):
-    for archivo, size, status in lote:
+    count = 50
+    for index, typle in enumerate(lote, start=1):
+        archivo, size, status = typle
         if status == "eliminado":
             logger.debug("Eliminando archivo: %s (%s)", archivo, status)
             repo.index.remove(archivo)
         else:
             logger.debug("Agregando archivo: %s (%s)", archivo, status)
             repo.index.add(archivo)
+
+        if index % count == 0:
+            logger.info(f"Agregados {index}/{len(lote)} archivos.")
+
+    logger.info(f"Agregados {len(lote)} archivos.")
 
 
 def inicializar_git(folder: Path) -> Repo:
@@ -199,7 +206,9 @@ def sleep_progress(seconds):
 
 
 def tiene_commits(repo: Repo) -> bool:
-    return bool(list(repo.iter_commits()))
+    if not "No commits yet" in repo.git.execute("git status"):
+        return True
+    return False
 
 
 def reset_repo(repo: Repo):

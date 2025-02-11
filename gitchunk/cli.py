@@ -27,6 +27,8 @@ def procesar_tarea(config: Task):
     files = get_files(repo, config.max_file_size_bytes)
     logger.info(f"Agrupando {len(files)} archivos...")
 
+    files_invalidos = [file[0] for file in files if file[2] == "invalido"]
+    logger.info(f"{len(files_invalidos)} archivos inválidos.")
     lotes = agrupar_por_lotes(files, config.max_batch_size_bytes)
     logger.info(f"Creando {len(lotes)} commits.")
 
