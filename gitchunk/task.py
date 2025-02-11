@@ -89,12 +89,13 @@ class Task:
         configs = []
         config = {}
         for line in content.splitlines():
-            if not "=" in line or line == "" or line.startswith("#") or line == "\n":
+            if line == "" or line.startswith("#") or line == "\n":
                 continue
             elif line.startswith("---"):
                 logger.debug("Se ha encontrado un bloque de configuración.")
                 configs.append(config)
-                config = list()
+                config = dict()
+                continue
 
             key, value = line.strip().split("=", 1)
             config[key.lower().strip()] = value.strip("\"' ")

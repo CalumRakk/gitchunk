@@ -26,35 +26,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def obtener_archivos(folder: Path, max_tamaño_archivo_mb):
-    logger.debug(f"Buscando archivos en: {folder}")
-    if isinstance(folder, str):
-        folder = Path(folder)
-
-    archivos_validos = []
-    archivos_invalidos = []
-
-    for root, dirs, files in os.walk(folder, topdown=True):
-        if ".git" in dirs:
-            dirs.remove(".git")
-            logger.debug(f"Excluyendo directorio .git en: {root}")
-        for file in files:
-            path = Path(root) / file
-            tamaño_mb = path.stat().st_size
-            if tamaño_mb <= max_tamaño_archivo_mb:
-                archivos_validos.append((path, tamaño_mb))
-                logger.debug(f"Archivo válido: {path} ({tamaño_mb:.2f} MB)")
-            else:
-                archivos_invalidos.append((path, tamaño_mb))
-                logger.warning(
-                    f"Archivo inválido (excede el tamaño): {path} ({tamaño_mb:.2f} MB)"
-                )
-    logger.info(
-        f"Encontrados {len(archivos_validos)} archivos válidos y {len(archivos_invalidos)} archivos inválidos."
-    )
-    return archivos_validos, archivos_invalidos
-
-
 def agrupar_por_lotes(archivos, max_tamaño_lote_mb):
     lotes = []
     lote_actual = []
@@ -102,31 +73,6 @@ def inicializar_git(folder: Path) -> Repo:
         return repo
     else:
         return git.Repo((folder / ".git"))
-
-
-def obtener_estado_archivo(repo, archivo):
-    """
-    Determina si un archivo específico es nuevo, modificado o sin cambios en un repositorio Git.
-
-    Args:
-        repo: Objeto del repositorio Git.
-        archivo: Ruta al archivo relativo al repositorio.
-
-    Returns:
-        str: 'nuevo', 'modificado' o 'sin_cambios'
-    """
-    # Verificar si el archivo es nuevo (no está rastreado)
-    folder = Path(repo.working_dir)
-    file_as_posix = archivo.relative_to(folder).as_posix()
-    if file_as_posix in repo.untracked_files:
-        return "nuevo"
-
-    # Verificar si el archivo está modificado
-    for diff_item in repo.index.diff(None):
-        if diff_item.a_path == file_as_posix:
-            return "modificado"
-
-    return "sin_cambios"
 
 
 def check_git_folder(folder: Union[Path, str]) -> bool:
