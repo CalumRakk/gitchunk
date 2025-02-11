@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 def procesar_tarea(config: Task):
+    logger.info("--------------------------------------------")
     if not config.local_dir.exists():
         logger.error(f"La carpeta de trabajo no existe: {config.local_dir}")
         return
 
     repo = inicializar_git(config.local_dir)
-    logger.info(f"Procesando cambios del repositorio...")
+    logger.info(f"Procesando cambios del repositorio {config.local_dir}...")
     files = get_files(repo, config.max_file_size_bytes)
     logger.info(f"Agrupando {len(files)} archivos...")
 
@@ -41,11 +42,8 @@ def procesar_tarea(config: Task):
         logger.info(f"Commit creado exitosamente.")
     add_tag(repo, config.tag)
     add_remote(repo, config.command_remote, config.remote_name, config.local_dir)
-
     push_commits(repo, config.remote_name, config.branch_name)
-
     push_tags(repo, config.tag, config.remote_name)
-    logger.info("Finalizando gitchunk.")
 
 
 if __name__ == "__main__":

@@ -67,20 +67,21 @@ class Task:
 
         file = config_path.read_text()
         config = cls._parsed_content(file)[0]
-        logger.info("Instanciando tarea a partir de archivo de configuración.")
-        return cls(task_path=config_path, **config)
+        instance = cls(task_path=config_path, **config)
+        logger.info(f"Instanciando tarea a partir de diccionario. {instance}")
+        return instance
 
     @classmethod
     def from_dict(cls, config: dict):
-        logger.info(f"Instanciando tarea a partir de diccionario.")
-
         if not isinstance(config, dict):
             raise TypeError("El config debe ser un diccionario.")
-        return cls(**config)
+        instance = cls(**config)
+        logger.info(f"Instanciando tarea a partir de diccionario. {instance}")
+        return instance
 
     @classmethod
     def _parsed_content(cls, content: str) -> list[dict]:
-        logger.info("Parseando contenido del archivo de configuración.")
+        logger.info("Parseando contenido.")
 
         if not isinstance(content, str):
             raise TypeError("El contenido debe ser una cadena de texto.")
@@ -91,16 +92,16 @@ class Task:
             if not "=" in line or line == "" or line.startswith("#") or line == "\n":
                 continue
             elif line.startswith("---"):
-                logger.info("Se ha encontrado un bloque de configuración.")
+                logger.debug("Se ha encontrado un bloque de configuración.")
                 configs.append(config)
                 config = list()
 
             key, value = line.strip().split("=", 1)
             config[key.lower().strip()] = value.strip("\"' ")
-            logger.info(f"Se ha asignado: {key.strip()}={value.strip()}")
+            logger.debug(f"Se ha asignado: {key.strip()}={value.strip()}")
         configs.append(config)
 
         return configs
 
     def __str__(self):
-        return f"{self.__class__.__name__}({self.local_dir})"
+        return f"Tarea para({self.local_dir})"
