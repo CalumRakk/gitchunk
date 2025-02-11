@@ -11,7 +11,7 @@ setup(
     version="0.1.0",
     author="Leo",
     author_email="leocasti2@gmail.com",
-    description="Script para hacer backup de archivos pequeños en un repositorio de github",
+    description="Script para hacer backup de un repositorio de gran tamaño que contiene archivos pequeños",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/CalumRakk/gitchunk",
