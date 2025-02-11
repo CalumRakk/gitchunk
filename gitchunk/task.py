@@ -6,11 +6,18 @@ from git import Actor
 logger = logging.getLogger(__name__)
 
 
-def check_file(path: Union[Path, str]) -> Path:
+def check_file(
+    path: Union[Path, str], nullable: bool = False, allow_nonexistent=False
+) -> Path:
     """Verifica si el archivo existe."""
+    if path is None and nullable is False:
+        raise ValueError(f"Path debe ser proporcionado. nullable = {nullable}")
+    if path is None and nullable is True:
+        return None
+
     if isinstance(path, str):
         path = Path(path)
-    if not path.exists():
+    if not path.exists() and not allow_nonexistent:
         raise FileNotFoundError(f"El archivo {path} no existe.")
     return path
 
@@ -18,8 +25,8 @@ def check_file(path: Union[Path, str]) -> Path:
 class Task:
     def __init__(
         self,
-        task_path: Path,
-        local_dir: Union[Path, str],
+        local_dir: Union[Path, str] = None,
+        task_path: Path = None,
         remote_name: str = "origin",
         branch_name: str = "master",
         max_file_size_bytes: int = 90 * 1024 * 1024,
@@ -29,8 +36,8 @@ class Task:
         command_remote: str = None,
         tag: str = None,
     ):
-        self.task_path = check_file(task_path)
-        self.local_dir = check_file(local_dir)
+        self.task_path = check_file(task_path, nullable=True)
+        self.local_dir = check_file(local_dir, nullable=False, allow_nonexistent=True)
         self.remote_name = remote_name
         self.branch_name = branch_name
         self.max_file_size_bytes = max_file_size_bytes
@@ -50,12 +57,38 @@ class Task:
             config_path = Path(config_path)
 
         file = config_path.read_text()
+        config = cls._parsed_content(file)[0]
+        return cls(task_path=config_path, **config)
+
+    @classmethod
+    def from_dict(cls, config: dict):
+        logger.info(f"Leyendo config: {config}")
+
+        if not isinstance(config, dict):
+            raise TypeError("El config debe ser un diccionario.")
+        return cls(**config)
+
+    @classmethod
+    def _parsed_content(cls, content: str) -> list[dict]:
+        if not isinstance(content, str):
+            raise TypeError("El contenido debe ser una cadena de texto.")
+
+        configs = []
         config = {}
-        for line in file.splitlines():
+        for line in content.splitlines():
             if not "=" in line or line == "" or line.startswith("#") or line == "\n":
                 continue
+            elif line.startswith("---"):
+                logger.info("Se ha encontrado un bloque de configuración.")
+                configs.append(config)
+                config = list()
+
             key, value = line.strip().split("=", 1)
             config[key.lower().strip()] = value.strip("\"' ")
             logger.info(f"Se ha asignado: {key.strip()}={value.strip()}")
+        configs.append(config)
 
-        return cls(task_path=config_path, **config)
+        return configs
+
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.local_dir})"

@@ -185,14 +185,17 @@ def sleep_progress(seconds):
 
 def main():
     logger.info("Iniciando gitchunk...")
+
+    # loads configs
+    tasks = []
     for file in Path("tasks").rglob("*.txt"):
         logger.info(f"Procesando archivo de configuración: {file}")
-        try:
-            config = Task.from_filepath(file)
-        except FileNotFoundError as e:
-            logger.error(f"Error al leer el archivo de configuración: {e}")
-            continue
+        content = file.read_text()
+        configs = Task._parsed_content(content)
+        tasks.extend([Task.from_dict(config) for config in configs])
 
+    for config in tasks:
+        logger.info(f"Procesando tarea: {config}")
         FOLDER = config.local_dir
         MAX_FILE_SIZE_MB = config.max_file_size_bytes
         MAX_BATCH_SIZE_MB = config.max_batch_size_bytes
@@ -203,6 +206,10 @@ def main():
         COMMAND_REMOTE = config.command_remote
         TAG = config.tag
         logger.info(f"Configuración cargada: {config.__dict__}")
+
+        if not FOLDER.exists():
+            logger.error(f"La carpeta de trabajo no existe: {FOLDER}")
+            continue
 
         try:
             repo = inicializar_git(FOLDER)
