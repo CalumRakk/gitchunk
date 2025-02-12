@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def procesar_tarea(config: Task):
-    logger.info("--------------------------------------------")
+    logger.info("".join(["-" for i in range(75)]))
     if not config.local_dir.exists():
         logger.error(f"La carpeta de trabajo no existe: {config.local_dir}")
         return

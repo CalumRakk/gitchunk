@@ -49,19 +49,27 @@ def agrupar_por_lotes(archivos, max_tamaño_lote_mb):
 
 def add_files(lote, repo: Repo):
     count = 50
+    count_eliminados = 0
+    count_agregados = 0
     for index, typle in enumerate(lote, start=1):
         archivo, size, status = typle
         if status == "eliminado":
             logger.debug("Eliminando archivo: %s (%s)", archivo, status)
             repo.index.remove(archivo)
+            count_eliminados += 1
         else:
             logger.debug("Agregando archivo: %s (%s)", archivo, status)
             repo.index.add(archivo)
+            count_agregados += 1
 
         if index % count == 0:
-            logger.info(f"Agregados {index}/{len(lote)} archivos.")
+            logger.info(
+                f"Iterado {index}/{len(lote)} archivos. Agregados {count_agregados} y eliminados {count_eliminados}"
+            )
 
-    logger.info(f"Agregados {len(lote)} archivos.")
+    logger.info(
+        f"Iterado {len(lote)}/{len(lote)} archivos. Agregados {count_agregados} y eliminados {count_eliminados}"
+    )
 
 
 def inicializar_git(folder: Path) -> Repo:
@@ -92,50 +100,6 @@ def check_git_folder(folder: Union[Path, str]) -> bool:
         if ".git" in dirs and root != str(folder):
             return True
     return False
-
-
-def instance_files(repo, max_tamaño_archivo_mb):
-    """
-    Dado un repositorio Git y un tamaño máximo de archivo en MB,
-    devuelve tres listas: archivos nuevos, archivos modificados y archivos inválidos.
-    Un archivo es inválido si su tamaño es mayor al especificado.
-
-    Args:
-        repo: Objeto del repositorio Git.
-        max_tamaño_archivo_mb: Tamaño máximo permitido para un archivo en MB.
-
-    Returns:
-        tuple: Tres listas de tuplas (ruta del archivo Path, tamaño en MB).
-    """
-
-    if check_git_folder(repo.working_dir):
-        # repo.untracked_files no devuelve los archivos de una subcarpeta si esta tiene una carpeta .git
-        raise ValueError(
-            "La carpeta de trabajo contiene una carpeta .git. No se puede continuar."
-        )
-
-    archivos_nuevos = []
-    archivos_modificados = []
-    archvivos_invalidos = []
-    folder = Path(repo.working_dir)
-    for path_string in repo.untracked_files:
-        path = folder / path_string
-        file_size = path.stat().st_size
-        if file_size <= max_tamaño_archivo_mb:
-            archivos_nuevos.append((path, file_size))
-        else:
-            archvivos_invalidos.append(path)
-    for diff_item in repo.index.diff(None):
-        # change_type = diff_item.change_type.lower()
-        # if change_type == "d":
-        #     continue
-        path = folder / diff_item.a_path
-        file_size = path.stat().st_size
-        if file_size <= max_tamaño_archivo_mb:
-            archivos_modificados.append((path, file_size))
-        else:
-            archvivos_invalidos.append(path)
-    return archivos_nuevos, archivos_modificados, archvivos_invalidos
 
 
 def sleep_progress(seconds):
