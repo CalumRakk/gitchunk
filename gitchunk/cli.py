@@ -26,15 +26,18 @@ def procesar_tarea(config: Task):
         return
 
     # mutar
-    if config.command_remote.lower() == "auto":
+    if config.command_remote is not None and config.command_remote.lower() == "auto":
+        logger.info("Buscando tarea automática...")
         task_folder = Path("tasks") / "auto"
         game_name = get_game_name(config.local_dir.parent.name)
         game_version = get_game_version(config.local_dir.parent.name)
         task_path = task_folder / f"{game_name}.txt"
         if task_path.exists():
+            logger.info(f"Usando tarea automática: {task_path}")
             config = Task.from_filepath(task_path)
             config.tag = game_version
         else:
+            logger.info(f"Creando tarea automática: {task_path}")
             response = creata_repostirotio(repo_name=game_name, private=True)
             # build git_url
             repo_full_name = response["full_name"]
@@ -76,7 +79,7 @@ if __name__ == "__main__":
     tasks = [
         Task.from_dict(config)
         for file in Path("tasks").rglob("*.txt")
-        for config in Task._parsed_content(file.read_text(), file)
+        for config in Task._parsed_content(file.read_text())
     ]
     for config in tasks:
         procesar_tarea(config)
