@@ -51,6 +51,7 @@ def procesar_tarea(config: Task):
             config_text = f"local_dir={config.local_dir}\nauthor_name={config.author_name}\nauthor_email={config.author_email}\ncommand_remote={command_remote}\ntag={game_version}"
             task_path.parent.mkdir(parents=True, exist_ok=True)
             task_path.write_text(config_text)
+            config = Task.from_filepath(task_path)
 
     repo = inicializar_git(config.local_dir)
     logger.info(f"Procesando cambios del repositorio {config.local_dir}...")
