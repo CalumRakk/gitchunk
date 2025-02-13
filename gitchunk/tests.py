@@ -25,6 +25,7 @@ class TestGameNameExtraction(unittest.TestCase):
             ("Game_With_Only_Version-1.0", "Game_With_Only", "1.0"),
             ("Game_With_Only_Version_2.0.1", "Game_With_Only", "2.0.1"),
             ("Normal_game_v2.2.5_EN_for", "Normal_game", "2.2.5"),
+            ("The Game 15 v1.00 Preview Build Part 2", "The Game 15", "1.00"),
         ]
 
     def test_game_names(self):

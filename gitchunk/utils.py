@@ -252,7 +252,7 @@ def push_commits(repo, remote_name, branch_name):
 def get_game_name(filename):
     match = regex_get_game_name.match(filename)
     if match:
-        return match.group(1)
+        return match.group(1).strip()
     else:
         return None
 
@@ -260,7 +260,7 @@ def get_game_name(filename):
 def get_game_version(filename):
     match = regex_get_version.search(filename)
     if match:
-        return match.group()
+        return match.group().strip()
     else:
         return None
 

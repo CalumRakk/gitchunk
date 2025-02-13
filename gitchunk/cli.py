@@ -35,6 +35,13 @@ def procesar_tarea(config: Task):
         game_version = get_game_version(
             config.local_dir.parent.name
         ) or get_game_version(config.local_dir.name)
+
+        if game_name is None or game_version is None:
+            logger.error(
+                "No se pudo obtener el nombre o la versión de la carpeta de trabajo."
+            )
+            return
+
         task_path = task_folder / f"{game_name}.txt"
         if task_path.exists():
             logger.info(f"Usando tarea automática: {task_path}")
