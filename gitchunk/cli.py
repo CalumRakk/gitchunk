@@ -11,6 +11,9 @@ from gitchunk.utils import (
     add_remote,
     push_tags,
     add_files,
+    get_game_name,
+    get_game_version,
+    creata_repostirotio,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,6 +24,26 @@ def procesar_tarea(config: Task):
     if not config.local_dir.exists():
         logger.error(f"La carpeta de trabajo no existe: {config.local_dir}")
         return
+
+    # mutar
+    if config.command_remote.lower() == "auto":
+        task_folder = Path("tasks") / "auto"
+        game_name = get_game_name(config.local_dir.parent.name)
+        game_version = get_game_version(config.local_dir.parent.name)
+        task_path = task_folder / f"{game_name}.txt"
+        if task_path.exists():
+            config = Task.from_filepath(task_path)
+            config.tag = game_version
+        else:
+            response = creata_repostirotio(repo_name=game_name, private=True)
+            # build git_url
+            repo_full_name = response["full_name"]
+            command_remote = (
+                f"git remote add origin git@{config.host_github}:{repo_full_name}.git"
+            )
+            config_text = f"local_dir={config.local_dir}\nauthor_name={config.author_name}\nauthor_email={config.author_email}\ncommand_remote={command_remote}\ntag={game_version}"
+            task_path.parent.mkdir(parents=True, exist_ok=True)
+            task_path.write_text(config_text)
 
     repo = inicializar_git(config.local_dir)
     logger.info(f"Procesando cambios del repositorio {config.local_dir}...")
@@ -53,7 +76,7 @@ if __name__ == "__main__":
     tasks = [
         Task.from_dict(config)
         for file in Path("tasks").rglob("*.txt")
-        for config in Task._parsed_content(file.read_text())
+        for config in Task._parsed_content(file.read_text(), file)
     ]
     for config in tasks:
         procesar_tarea(config)

@@ -1,17 +1,18 @@
-from pathlib import Path
-from typing import Tuple
-from git import Repo
+import re
 import os
-from datetime import datetime
-import git
-from git import Repo
-import logging
-from typing import Union
-from pathlib import Path
 import time
+import logging
+from pathlib import Path
+from typing import Union, Tuple
 from datetime import timedelta
-from gitchunk.task import Task
 
+import requests
+from git import Repo
+import git
+
+# El regex espera que haya una version en el nombre para ser capturado
+regex_get_game_name = re.compile(r"^(.*?)(:?_?-?)(?:Release|Version|v|\d+\.\d+.*|pc)")
+regex_get_version = re.compile(r"(\d+\.)+\d+")
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     datefmt="%d-%m-%Y %I:%M:%S %p",
@@ -246,3 +247,45 @@ def push_commits(repo, remote_name, branch_name):
 
         if index < len(commits_pendientes):
             sleep_progress(timedelta(minutes=5).total_seconds())
+
+
+def get_game_name(filename):
+    match = regex_get_game_name.match(filename)
+    if match:
+        return match.group(1)
+    else:
+        return None
+
+
+def get_game_version(filename):
+    match = regex_get_version.search(filename)
+    if match:
+        return match.group()
+    else:
+        return None
+
+
+def load_access_token():
+    with open("ACCESS_TOKEN", "r") as f:
+        access_token = f.read().strip()
+    return access_token
+
+
+def creata_repostirotio(repo_name, description=None, private=True):
+    access_token = load_access_token()
+    GITHUB_API_URL = "https://api.github.com/user/repos"
+    headers = {
+        "Authorization": f"token {access_token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    data = {
+        "name": repo_name,
+        "description": description,
+        "private": private,
+    }
+    response = requests.post(GITHUB_API_URL, json=data, headers=headers)
+    if response.status_code == 201:
+        logger.info(f"Repositorio '{repo_name}' creado exitosamente!")
+    else:
+        logger.error(f"Error al crear el repositorio: {response.status_code}")
+    return response.json()

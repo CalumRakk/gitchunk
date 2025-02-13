@@ -35,6 +35,7 @@ class Task:
         author_email: str = None,
         command_remote: str = None,
         tag: str = None,
+        host_github: str = None,
     ):
         self.task_path = check_file(task_path, nullable=True)
         self.local_dir = check_file(local_dir, nullable=False, allow_nonexistent=True)
@@ -47,6 +48,7 @@ class Task:
         self.author = Actor(name=author_name, email=author_email)
         self.committer = Actor(name=author_name, email=author_email)
         self.command_remote = command_remote
+        self.host_github = host_github
         self.tag = tag
 
     @classmethod
@@ -55,7 +57,7 @@ class Task:
 
         if isinstance(config_path, str):
             config_path = Path(config_path)
-        elif isinstance(config_path, None):
+        elif config_path is None:
             logger.error("El path debe ser proporcionado.")
             raise ValueError("El path debe ser proporcionado.")
 
