@@ -29,8 +29,12 @@ def procesar_tarea(config: Task):
     if config.command_remote is not None and config.command_remote.lower() == "auto":
         logger.info("Buscando tarea automática...")
         task_folder = Path("tasks") / "auto"
-        game_name = get_game_name(config.local_dir.parent.name)
-        game_version = get_game_version(config.local_dir.parent.name)
+        game_name = get_game_name(config.local_dir.parent.name) or get_game_name(
+            config.local_dir.name
+        )
+        game_version = get_game_version(
+            config.local_dir.parent.name
+        ) or get_game_version(config.local_dir.name)
         task_path = task_folder / f"{game_name}.txt"
         if task_path.exists():
             logger.info(f"Usando tarea automática: {task_path}")
