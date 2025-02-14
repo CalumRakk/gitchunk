@@ -11,7 +11,9 @@ from git import Repo
 import git
 
 # El regex espera que haya una version en el nombre para ser capturado
-regex_get_game_name = re.compile(r"^(.*?)(:?_?-?)(?:Release|Version|v|\d+\.\d+.*|pc)")
+regex_get_game_name = re.compile(
+    r"^(.+?)[_ -]?(?:Release|Version|v|\d+\.\d+.*|pc)", re.IGNORECASE
+)
 regex_get_version = re.compile(r"(\d+\.)+\d+")
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
