@@ -59,7 +59,7 @@ class GitHubClient:
         return clean_url.replace("https://", f"https://{self.token}@")
 
     def get_or_create_repo(self, repo_name: str) -> str:
-        """Lógica de orquestación: busca el repo o lo crea."""
+        """Obtiene o crea un repositorio privado en GitHub. Y devuelve su URL remota."""
         username = self.get_authenticated_user()
         if self.repo_exists(username, repo_name):
             logger.info(f"El repositorio '{repo_name}' ya existe en GitHub.")

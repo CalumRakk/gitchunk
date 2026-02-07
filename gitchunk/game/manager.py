@@ -16,13 +16,17 @@ logger = logging.getLogger(__name__)
 
 class GameManager:
     def __init__(self, acces_token: str):
-        self.github = GitHubClient(token=acces_token)
+        self.token = acces_token
 
     def process_game(self, game_path: Path):
         logger.info(f"=== Iniciando procesamiento de juego en: {game_path} ===")
 
-        # ESCANEO
+        github_client = GitHubClient(token=self.token)
         scanner = GameScanner(game_path)
+        cleaner = GameCleaner(game_path)
+        repo_wrapper = GitchunkRepo(game_path, token=self.token)
+
+        # ESCANEO
         metadata = scanner.scan()
 
         logger.info(f"ID del Juego: {metadata.save_id}")
@@ -30,9 +34,9 @@ class GameManager:
         logger.info(f"Versión Detectada: {metadata.version}")
         logger.info(f"Plataforma: {metadata.platform}")
 
-        username = self.github.get_authenticated_user()
-        if self.github.repo_exists(username, metadata.repo_name):
-            remote_tags = self.github.get_remote_tags(username, metadata.repo_name)
+        username = github_client.get_authenticated_user()
+        if github_client.repo_exists(username, metadata.repo_name):
+            remote_tags = github_client.get_remote_tags(username, metadata.repo_name)
             platform_suffix = f"-{metadata.platform}"
             versions_in_platform = [
                 t.replace("v", "").replace(platform_suffix, "")
@@ -51,32 +55,16 @@ class GameManager:
                     )
 
         # GESTIÓN DEL REMOTO (GitHub)
-        remote_url_clean = self.github.get_or_create_repo(metadata.repo_name)
+        remote_url = github_client.get_or_create_repo(metadata.repo_name)
+        auth_url = github_client.get_auth_url(remote_url)
 
-        # Generamos la URL con autenticación integrada para el push
-        auth_url = self.github.get_auth_url(remote_url_clean)
-
-        # LIMPIEZA
-        cleaner = GameCleaner(game_path)
         cleaner.clean()
 
-        # OPERACIONES DE GIT
-        repo_wrapper = GitchunkRepo(game_path)
+        repo_wrapper.ensure_identity()
 
-        # Asegurar identidad del comitter
-        author_name = "Gitchunk Bot"
-        author_email = "bot@gitchunk.local"
-        repo_wrapper.ensure_identity(name=author_name, email=author_email)
+        repo_wrapper.configure_endpoint(remote_url, metadata.branch_name)
 
-        repo_wrapper.set_remote(remote_url_clean)
-
-        repo_wrapper._checkout_target_branch(metadata.branch_name)
-
-        # Intentar optimizar (Shallow Fetch + Soft Reset)
-        # Solo actúa si el repo local es nuevo
-        repo_wrapper.synchronize_if_exists(
-            auth_url=auth_url, branch_name=metadata.branch_name
-        )
+        repo_wrapper.synchronize()
 
         # COMMITS
         files_report, batches = repo_wrapper.analyze_changes()
@@ -93,11 +81,7 @@ class GameManager:
             # Continuamos de todos modos por si falta subir el tag o pushear
 
         # SUBIDA
-        repo_wrapper.push_sequentially(
-            auth_url=auth_url,
-            branch_name=metadata.branch_name,
-            delay_mins=1,
-        )
+        repo_wrapper.push(delay_mins=1)
 
         is_pc = metadata.platform.lower() in ["pc", "windows", "linux", "mac"]
         if is_pc:
@@ -106,7 +90,7 @@ class GameManager:
             logger.info(
                 f"Plataforma PC detectada. Estableciendo {metadata.platform} como Default Branch..."
             )
-            self.github.set_default_branch(metadata.repo_name, metadata.branch_name)
+            github_client.set_default_branch(metadata.repo_name, metadata.branch_name)
 
         logger.info(f"=== Proceso finalizado para {metadata.save_id} ===")
 
