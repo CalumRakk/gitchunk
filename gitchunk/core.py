@@ -4,6 +4,8 @@ from typing import Optional
 
 from git import Actor, Repo, exc
 
+from gitchunk.schemas import Batchs, FilesFiltered
+
 from .git_manager import (
     check_git_user_email,
     create_commits,
@@ -96,24 +98,6 @@ class GitchunkRepo:
                 # Caso borde: HEAD no apunta a una rama (detached)
                 self.repo.git.checkout("-B", branch_name)
 
-    def prepare_and_commit(self) -> int:
-        """
-        Analiza archivos, crea lotes y genera los commits.
-        Devuelve el número de commits creados.
-        """
-        if not self.author:
-            raise ValueError("Debes llamar a ensure_identity() antes de hacer commits.")
-
-        logger.info("Analizando archivos y preparando lotes...")
-        status = get_git_status(self.repo)
-        files = filter_files_from_status(self.path, status)
-        batches = batch_files(files)
-
-        commits = create_commits(self.repo, batches, self.author)
-
-        logger.info(f"Se han generado {len(commits)} commits nuevos.")
-        return len(commits)
-
     def push_sequentially(
         self,
         auth_url: Optional[str] = None,
@@ -151,3 +135,33 @@ class GitchunkRepo:
                 logger.info("Sincronización inicial exitosa.")
             else:
                 logger.info(f"No se encontró historial previo para '{branch_name}'.")
+
+    def analyze_changes(self) -> tuple[FilesFiltered, Batchs]:
+        """
+        Analiza el estado actual y prepara los lotes de cambios.
+        No realiza ninguna modificación en el repositorio.
+        """
+        logger.info("Analizando archivos para backup...")
+        status = get_git_status(self.repo)
+
+        files_filtered = filter_files_from_status(self.path, status)
+        batches = batch_files(files_filtered)
+
+        return files_filtered, batches
+
+    def commit_changes(self, batches: Batchs) -> int:
+        """
+        Ejecuta los commits basados en los lotes calculados previamente.
+        """
+        if not self.author:
+            raise ValueError("Debes llamar a ensure_identity() antes de hacer commits.")
+
+        if not batches["to_add"] and not batches["to_delete"]:
+            logger.info("No hay cambios válidos para confirmar.")
+            return 0
+
+        logger.info("Aplicando cambios al repositorio...")
+        commits = create_commits(self.repo, batches, self.author)
+
+        logger.info(f"Se han generado {len(commits)} commits nuevos.")
+        return len(commits)

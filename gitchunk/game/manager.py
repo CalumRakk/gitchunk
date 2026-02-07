@@ -79,8 +79,15 @@ class GameManager:
         )
 
         # COMMITS
-        commits_created = repo_wrapper.prepare_and_commit()
+        files_report, batches = repo_wrapper.analyze_changes()
+        if files_report["invalid_files"]:
+            logger.warning("=== ARCHIVOS OMITIDOS POR TAMAÑO ===")
+            for fname, size, reason in files_report["invalid_files"]:
+                size_mb = size / (1024**2)
+                logger.warning(f"  [X] {fname} ({size_mb:.2f} MB) -> {reason}")
+            logger.warning("====================================")
 
+        commits_created = repo_wrapper.commit_changes(batches)
         if commits_created == 0:
             logger.info("No hay cambios nuevos para archivar.")
             # Continuamos de todos modos por si falta subir el tag o pushear
