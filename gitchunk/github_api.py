@@ -4,6 +4,8 @@ from urllib.error import HTTPError
 
 import requests
 
+from gitchunk.schemas import TokenInfo
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,6 +18,33 @@ class GitHubClient:
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+
+    def verify_token(self) -> TokenInfo:
+        """
+        Verifica si el token es válido y devuelve información sobre el usuario y permisos.
+        """
+        url = f"{self.base_url}/user"
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+
+            data = response.json()
+
+            scopes_header = response.headers.get("X-OAuth-Scopes", "")
+            scopes = (
+                [s.strip() for s in scopes_header.split(",")] if scopes_header else []
+            )
+
+            return TokenInfo(username=data["login"], scopes=scopes, is_valid=True)
+
+        except HTTPError as e:
+            if e.response.status_code == 401:
+                raise ValueError("El token proporcionado no es válido o ha expirado.")
+            elif e.response.status_code == 403:
+                raise ValueError(
+                    "Acceso denegado por GitHub (Posible Rate Limit o SSO requerido)."
+                )
+            raise e
 
     def get_authenticated_user(self) -> str:
         """Obtiene el 'login' (username) del dueño del token."""

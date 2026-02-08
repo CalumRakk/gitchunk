@@ -1,6 +1,7 @@
 from typing import List, TypedDict
 
 from git import Optional, Tuple
+from pydantic import BaseModel
 
 
 class Batchs(TypedDict):
@@ -41,3 +42,9 @@ class StatusUnstaged(TypedDict):
 class GitStatus(TypedDict):
     staged: StatusStaged
     unstaged: StatusUnstaged
+
+
+class TokenInfo(BaseModel):
+    username: str
+    scopes: List[str]
+    is_valid: bool
