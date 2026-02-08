@@ -47,16 +47,41 @@ def ephemeral_remote(
             repo.delete_remote(remote)
 
 
-def sync_with_remote_shallow(repo: Repo, auth_url: str, branch_name: str):
+def sync_with_remote_shallow(repo: Repo, auth_url: str, branch_name: str) -> bool:
     """
-    Realiza un fetch de profundidad 1 usando una URL con token
-    y mueve el HEAD al commit del remoto (soft reset).
+    Sincroniza el estado local con el remoto de forma superficial (depth 1).
+    Si el remoto es nuevo, termina silenciosamente para permitir el primer push.
     """
     with ephemeral_remote(repo, auth_url, "temp_sync") as remote:
-        remote.fetch(branch_name, depth=1)  # TODO: LLEVA TIEMPO
-        remote_ref = f"{remote.name}/{branch_name}"
-        repo.git.reset(remote_ref)  # TODO: LLEVA TIEMPO
-        return True
+        try:
+            # Verificar si la rama existe en el remoto sin descargar nada
+            remote_info = repo.git.ls_remote(remote.name, branch_name)
+            if not remote_info:
+                logger.info(
+                    f"El remoto no tiene la rama '{branch_name}'. Se asume repositorio nuevo."
+                )
+                return False
+
+            logger.info(f"Sincronizando con {branch_name} (shallow fetch)...")
+            remote.fetch(branch_name, depth=1)
+            remote_ref = f"{remote.name}/{branch_name}"
+
+            # Mover el puntero (HEAD/Index) sin tocar los archivos del usuario (Working Tree)
+            if is_repo_new(repo):
+                repo.git.read_tree(remote_ref)
+                repo.git.symbolic_ref("HEAD", f"refs/heads/{branch_name}")
+                logger.debug("Repositorio local inicializado con el índice del remoto.")
+            else:
+                repo.git.reset(remote_ref)
+                logger.debug(f"Reset local a {remote_ref} completado.")
+
+            return True
+
+        except GitCommandError as e:
+            logger.warning(
+                f"Aviso en sincronización: {e.stderr.strip() if e.stderr else str(e)}"
+            )
+            return False
 
 
 def fix_dubious_ownership(path: Path) -> bool:

@@ -52,33 +52,50 @@ class GameScanner:
             save_id=save_id,
         )
 
-    def _get_renpy_config_version(self) -> Optional[str]:
-        """Busca define config.version en options.rpy/rpyc."""
-        game_dir = self.path / "game"
-        options_rpy = game_dir / "options.rpy"
-        options_rpyc = game_dir / "options.rpyc"
+    def _get_renpy_variable(self, variable_name: str) -> Optional[str]:
+        """
+        Busca una variable (ej: config.version) en todos los archivos options.rpy/rpyc
+        dentro del proyecto.
+        """
+        pattern = re.compile(rf'{variable_name}\s*=\s*["\']([^"\']+)["\']')
 
-        pattern = re.compile(r'config\.version\s*=\s*["\']([^"\']+)["\']')
-        if options_rpy.exists():
+        # Buscar archivos options.rpy y options.rpyc en cualquier profundidad
+        potential_files = sorted(
+            self.path.rglob("options.rpy*"),
+            key=lambda p: p.suffix,  # .rpy aparecerá antes que .rpyc
+            reverse=True,
+        )
+
+        for config_file in potential_files:
             try:
-                content = options_rpy.read_text(encoding="utf-8", errors="ignore")
+                if config_file.suffix == ".rpy":
+                    content = config_file.read_text(encoding="utf-8", errors="ignore")
+                else:
+                    # Para .rpyc leemos como binario y decodificamos ignorando errores
+                    content = config_file.read_bytes().decode("utf-8", "ignore")
+
                 match = pattern.search(content)
                 if match:
-                    return match.group(1)
+                    value = match.group(1)
+                    logger.debug(
+                        f"Encontrado {variable_name}='{value}' en {config_file}"
+                    )
+                    return value
             except Exception as e:
-                logger.debug(f"Error leyendo options.rpy para versión: {e}")
-
-        if options_rpyc.exists():
-            try:
-                with open(options_rpyc, "rb") as f:
-                    content_bin = f.read()
-                    match = pattern.search(content_bin.decode("utf-8", "ignore"))
-                    if match:
-                        return match.group(1)
-            except Exception as e:
-                logger.debug(f"Error leyendo options.rpyc para versión: {e}")
+                logger.debug(f"No se pudo leer {config_file}: {e}")
 
         return None
+
+    def _get_renpy_config_version(self) -> Optional[str]:
+        return self._get_renpy_variable("config.version")
+
+    def _get_renpy_save_id(self) -> str:
+        save_id = self._get_renpy_variable("config.save_directory")
+        if not save_id:
+            raise ValueError(
+                "No se pudo encontrar el ID de guardado (config.save_directory)."
+            )
+        return save_id
 
     def _find_executable(self) -> str:
         """Busca el ejecutable principal del juego."""
@@ -203,37 +220,3 @@ class GameScanner:
             return "linux"
 
         raise ValueError("No se pudo determinar la plataforma del juego.")
-
-    def _get_renpy_save_id(self) -> str:
-        """
-        Busca config.save_directory en options.rpy/rpyc.
-        """
-        game_dir = self.path / "game"
-        options_rpy = game_dir / "options.rpy"
-        options_rpyc = game_dir / "options.rpyc"
-
-        # Regex para buscar: config.save_directory = "MyGame-123"
-        pattern = re.compile(r'config\.save_directory\s*=\s*["\']([^"\']+)["\']')
-
-        # Intentar leer el código fuente
-        if options_rpy.exists():
-            try:
-                content = options_rpy.read_text(encoding="utf-8", errors="ignore")
-                match = pattern.search(content)
-                if match:
-                    return match.group(1)
-            except Exception:
-                pass
-
-        # Intentar leer binario compilado
-        if options_rpyc.exists():
-            try:
-                with open(options_rpyc, "rb") as f:
-                    content_bin = f.read()
-                    match = pattern.search(content_bin.decode("utf-8", "ignore"))
-                    if match:
-                        return match.group(1)
-            except Exception:
-                pass
-
-        raise ValueError("No se pudo encontrar el ID de guardado.")
