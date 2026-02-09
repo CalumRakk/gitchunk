@@ -49,38 +49,42 @@ def ephemeral_remote(
 
 def sync_with_remote_shallow(repo: Repo, auth_url: str, branch_name: str) -> bool:
     """
-    Sincroniza el estado local con el remoto de forma superficial (depth 1).
-    Si el remoto es nuevo, termina silenciosamente para permitir el primer push.
+    Sincroniza el repositorio local con el último commit del remoto para asegurar
+    una historia lineal.
+
+    1. Verifica si el remoto tiene la rama.
+    2. Si existe, hace fetch y MUEVE el HEAD local a ese commit (soft reset).
+    3. Si no existe, no hace nada (permite crear el primer commit).
     """
     with ephemeral_remote(repo, auth_url, "temp_sync") as remote:
         try:
-            # Verificar si la rama existe en el remoto sin descargar nada
-            remote_info = repo.git.ls_remote(remote.name, branch_name)
-            if not remote_info:
+            # Si no devuelve nada, la rama no existe en el remoto (repo nuevo).
+            remote_refs = repo.git.ls_remote(remote.name, branch_name)
+
+            if not remote_refs:
                 logger.info(
-                    f"El remoto no tiene la rama '{branch_name}'. Se asume repositorio nuevo."
+                    f"El remoto no tiene la rama '{branch_name}'. Se iniciará un historial nuevo (Root Commit)."
                 )
                 return False
 
-            logger.info(f"Sincronizando con {branch_name} (shallow fetch)...")
+            # Fetch superficial (solo el último commit)
+            logger.info(f"Sincronizando historial con {branch_name}...")
             remote.fetch(branch_name, depth=1)
+
             remote_ref = f"{remote.name}/{branch_name}"
 
-            # Mover el puntero (HEAD/Index) sin tocar los archivos del usuario (Working Tree)
-            if is_repo_new(repo):
-                repo.git.read_tree(remote_ref)
-                repo.git.symbolic_ref("HEAD", f"refs/heads/{branch_name}")
-                logger.debug("Repositorio local inicializado con el índice del remoto.")
-            else:
-                repo.git.reset(remote_ref)
-                logger.debug(f"Reset local a {remote_ref} completado.")
+            # Mueve el HEAD local al commit del remoto.
+            # --soft: Actualiza el HEAD y el Índice (staging), pero NO toca los archivos de trabajo (Game V2).
+            # Git cree que "tenemos" la V1, y verá los archivos de la V2 como cambios pendientes.
+            repo.git.reset("--soft", remote_ref)
 
+            logger.debug(
+                f"HEAD local vinculado a {remote_ref}. El próximo commit será hijo de este."
+            )
             return True
 
         except GitCommandError as e:
-            logger.warning(
-                f"Aviso en sincronización: {e.stderr.strip() if e.stderr else str(e)}"
-            )
+            logger.warning(f"Error durante la sincronización remota: {e}")
             return False
 
 
