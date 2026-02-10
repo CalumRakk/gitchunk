@@ -2,9 +2,9 @@ __pycache__/
 .vscode/
 dist/
 build/
+docs/
 *.egg-info/
 .venv/
-
 .env
 .DS_Store
 

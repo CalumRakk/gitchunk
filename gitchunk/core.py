@@ -11,6 +11,7 @@ from .git_manager import (
     create_commits,
     fix_dubious_ownership,
     get_git_status,
+    get_problematic_git_configs,
     get_remote,
     is_repo_new,
     push_commits_one_by_one,
@@ -56,18 +57,20 @@ class GitchunkRepo:
             delay_minutes=delay_mins,
         )
 
-    def analyze_changes(self) -> tuple[FilesFiltered, Batchs]:
+    def analyze_changes(self) -> tuple[FilesFiltered, Batchs, list[dict]]:
         """
         Analiza el estado actual y prepara los lotes de cambios.
         No realiza ninguna modificación en el repositorio.
         """
         logger.info("Analizando archivos para backup...")
+        git_problems = get_problematic_git_configs(self.repo)
+
         status = get_git_status(self.repo)
 
         files_filtered = filter_files_from_status(self.path, status)
         batches = batch_files(files_filtered)
 
-        return files_filtered, batches
+        return files_filtered, batches, git_problems
 
     def commit_changes(self, batches: Batchs) -> int:
         """

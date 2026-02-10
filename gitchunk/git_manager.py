@@ -17,6 +17,7 @@ from .schemas import (
     GitStatus,
     StatusStaged,
     StatusUnstaged,
+    SyncStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,45 +48,95 @@ def ephemeral_remote(
             repo.delete_remote(remote)
 
 
+def get_sync_status(repo: Repo, remote: Remote, branch_name: str) -> SyncStatus:
+    """
+    Determina la relación topológica entre el HEAD local y la rama remota.
+    No modifica el repositorio.
+    """
+    try:
+        remote_refs = repo.git.ls_remote(remote.name, branch_name)
+    except GitCommandError:
+        return SyncStatus.NO_REMOTE
+
+    if not remote_refs:
+        return SyncStatus.NO_REMOTE
+
+    remote.fetch(branch_name, depth=1)
+    remote_ref = f"{remote.name}/{branch_name}"
+
+    if is_repo_new(repo):
+        return SyncStatus.BEHIND  # Si local está vacío, técnicamente estamos "atrás".
+
+    local_commit = repo.head.commit
+    remote_commit = repo.commit(remote_ref)
+
+    if local_commit == remote_commit:
+        return SyncStatus.EQUAL
+
+    # Análisis de Ancestros
+    # ¿Es el remoto un ancestro del local? -> Entonces vamos ganando (AHEAD)
+    try:
+        if repo.is_ancestor(remote_commit, local_commit):
+            return SyncStatus.AHEAD
+    except GitCommandError:
+        pass
+
+    # ¿Es el local un ancestro del remoto? -> Entonces vamos perdiendo (BEHIND)
+    try:
+        if repo.is_ancestor(local_commit, remote_commit):
+            return SyncStatus.BEHIND
+    except GitCommandError:
+        pass
+
+    # Si no es ninguno de los anteriores, han divergido
+    return SyncStatus.DIVERGED
+
+
 def sync_with_remote_shallow(repo: Repo, auth_url: str, branch_name: str) -> bool:
     """
-    Sincroniza el repositorio local con el último commit del remoto para asegurar
-    una historia lineal.
-
-    1. Verifica si el remoto tiene la rama.
-    2. Si existe, hace fetch y MUEVE el HEAD local a ese commit (soft reset).
-    3. Si no existe, no hace nada (permite crear el primer commit).
+    Sincroniza el repositorio local actuando según el estado detectado.
     """
-    with ephemeral_remote(repo, auth_url, "temp_sync") as remote:
-        try:
-            # Si no devuelve nada, la rama no existe en el remoto (repo nuevo).
-            remote_refs = repo.git.ls_remote(remote.name, branch_name)
+    logger.info("Verificando estado de sincronización con el remoto...")
 
-            if not remote_refs:
+    with ephemeral_remote(repo, auth_url, "temp_sync") as remote:
+        status = get_sync_status(repo, remote, branch_name)
+        remote_ref = f"{remote.name}/{branch_name}"
+
+        match status:
+            case SyncStatus.NO_REMOTE:
                 logger.info(
-                    f"El remoto no tiene la rama '{branch_name}'. Se iniciará un historial nuevo (Root Commit)."
+                    f"Rama remota '{branch_name}' no existe. Se iniciará historial nuevo."
                 )
                 return False
 
-            # Fetch superficial (solo el último commit)
-            logger.info(f"Sincronizando historial con {branch_name}...")
-            remote.fetch(branch_name, depth=1)
+            case SyncStatus.EQUAL:
+                logger.info("El repositorio ya está sincronizado.")
+                return True
 
-            remote_ref = f"{remote.name}/{branch_name}"
+            case SyncStatus.AHEAD:
+                logger.info(
+                    "ESTADO: AHEAD (Resume). "
+                    "Se detectaron commits locales pendientes de subir. "
+                    "NO se realizará reset para preservar el trabajo."
+                )
+                return True
 
-            # Mueve el HEAD local al commit del remoto.
-            # --soft: Actualiza el HEAD y el Índice (staging), pero NO toca los archivos de trabajo (Game V2).
-            # Git cree que "tenemos" la V1, y verá los archivos de la V2 como cambios pendientes.
-            repo.git.reset("--soft", remote_ref)
+            case SyncStatus.BEHIND:
+                logger.info(
+                    "ESTADO: BEHIND (Update). Actualizando base local al último commit remoto..."
+                )
+                repo.git.reset("--soft", remote_ref)
+                return True
 
-            logger.debug(
-                f"HEAD local vinculado a {remote_ref}. El próximo commit será hijo de este."
-            )
-            return True
+            case SyncStatus.DIVERGED:
+                logger.warning(
+                    "ESTADO: DIVERGED. Las historias han divergido. "
+                    "Se forzará la alineación al remoto (reset --soft) manteniendo archivos."
+                )
+                repo.git.reset("--soft", remote_ref)
+                return True
 
-        except GitCommandError as e:
-            logger.warning(f"Error durante la sincronización remota: {e}")
-            return False
+        return False
 
 
 def fix_dubious_ownership(path: Path) -> bool:
@@ -360,3 +411,27 @@ def init_repo(folder: Path | str) -> Repo:
         return repo
     else:
         return Repo((folder / ".git"))
+
+
+def get_problematic_git_configs(repo: Repo) -> list[dict]:
+    """
+    Detecta configuraciones de Git (globales o de sistema) que podrían
+    hacer que archivos importantes sean ignorados.
+    """
+    problems = []
+
+    try:
+        global_ignore = repo.git.config("--get", "core.excludesfile")
+        if global_ignore:
+            problems.append(
+                {
+                    "config": "core.excludesfile",
+                    "value": global_ignore,
+                    "reason": "Tienes un archivo de ignore global que podría estar ocultando ejecutables (.exe, .dll) o carpetas del juego.",
+                }
+            )
+    except GitCommandError:
+        # Si no existe la config, git devuelve error 1, es normal.
+        pass
+
+    return problems

@@ -67,7 +67,14 @@ class GameManager:
         repo_wrapper.synchronize()
 
         # COMMITS
-        files_report, batches = repo_wrapper.analyze_changes()
+        files_report, batches, git_problems = repo_wrapper.analyze_changes()
+        if git_problems:
+            logger.warning(
+                f"[bold yellow]ADVERTENCIA DE CONFIGURACIÓN GIT[/bold yellow]\n\n"
+                f"Se detectó una configuración que podría ocultar archivos del juego:\n"
+                f"[cyan]{git_problems[0]['config']}[/cyan] -> [white]{git_problems[0]['value']}[/white]\n\n"
+                f"Si faltan archivos (como el .exe), revisa ese archivo de ignore global.",
+            )
         if files_report["invalid_files"]:
             logger.warning("=== ARCHIVOS OMITIDOS POR TAMAÑO ===")
             for fname, size, reason in files_report["invalid_files"]:

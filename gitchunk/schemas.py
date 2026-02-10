@@ -1,3 +1,4 @@
+from enum import Enum, auto
 from typing import List, TypedDict
 
 from git import Optional, Tuple
@@ -48,3 +49,11 @@ class TokenInfo(BaseModel):
     username: str
     scopes: List[str]
     is_valid: bool
+
+
+class SyncStatus(Enum):
+    NO_REMOTE = auto()  # El remoto no tiene la rama (Repo nuevo)
+    EQUAL = auto()  # Estamos sincronizados
+    AHEAD = auto()  # Local tiene commits nuevos (RESUME)
+    BEHIND = auto()  # Remoto tiene commits nuevos (UPDATE)
+    DIVERGED = auto()  # Historias incompatibles (CONFLICT)
