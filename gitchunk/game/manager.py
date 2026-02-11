@@ -83,6 +83,7 @@ class GameManager:
             logger.warning("====================================")
 
         commits_created = repo_wrapper.commit_changes(batches)
+        should_force_tag = commits_created > 0
         if commits_created == 0:
             logger.info("No hay cambios nuevos para archivar.")
             # Continuamos de todos modos por si falta subir el tag o pushear
@@ -90,43 +91,54 @@ class GameManager:
         # SUBIDA
         repo_wrapper.push(delay_mins=1)
 
-        is_pc = metadata.platform.lower() in ["pc", "windows", "linux", "mac"]
-        if is_pc:
-            # Si es la primera subida, se establece esa plataforma como default.
-            # luego cuando se detecte PC, forzamos el cambio para corregirlo
+        tag_created = self._ensure_tag(
+            repo_wrapper, metadata.tag_name, force=should_force_tag
+        )
+        if tag_created:
             logger.info(
-                f"Plataforma PC detectada. Estableciendo {metadata.platform} como Default Branch..."
+                f"Etiqueta {metadata.tag_name} {'actualizada' if should_force_tag else 'creada'}."
             )
-            github_client.set_default_branch(metadata.repo_name, metadata.branch_name)
+            self.push_tag_securely(
+                repo_wrapper.repo, auth_url, metadata.tag_name, force=should_force_tag
+            )
 
         logger.info(f"=== Proceso finalizado para {metadata.save_id} ===")
 
-        # ETIQUETADO
-        # Formato: v1.0.0-pc
-        tag_created = self._ensure_tag(repo_wrapper, metadata.tag_name)
-        if tag_created:
-            logger.info(f"Etiqueta {metadata.tag_name} creada.")
-            self.push_tag_securely(repo_wrapper.repo, auth_url, metadata.tag_name)
-
-    def _ensure_tag(self, gitchunk: GitchunkRepo, tag_name: str) -> bool:
-        """Crea el tag si no existe. Retorna True si se creó."""
+    def _ensure_tag(
+        self, gitchunk: GitchunkRepo, tag_name: str, force: bool = False
+    ) -> bool:
+        """Crea o mueve el tag. Retorna True si se operó sobre el tag."""
         repo = gitchunk.repo
 
         if tag_name in repo.tags:
-            logger.warning(
-                f"El tag '{tag_name}' ya existe localmente. Saltando creación."
-            )
-            return False
+            if not force:
+                logger.warning(
+                    f"El tag '{tag_name}' ya existe localmente. Saltando creación."
+                )
+                return False
 
-        logger.info(f"Creando tag: {tag_name}")
+            # Si el tag ya apunta al commit actual, no hacemos nada
+            if repo.tags[tag_name].commit == repo.head.commit:
+                logger.info(f"El tag '{tag_name}' ya está al día con el último commit.")
+                return False
+
+            logger.info(f"Moviendo tag '{tag_name}' al nuevo commit...")
+            repo.delete_tag(tag_name)  # type: ignore
+
         repo.create_tag(tag_name)
         return True
 
-    def push_tag_securely(self, repo: Repo, auth_url: str, tag_name: str):
+    def push_tag_securely(
+        self, repo: Repo, auth_url: str, tag_name: str, force: bool = False
+    ):
         with ephemeral_remote(repo, auth_url, "temp_tag_push") as remote:
-            logger.info(f"Subiendo etiqueta {tag_name}...")
+            logger.info(f"Subiendo etiqueta {tag_name} (force={force})...")
 
-            infos = remote.push(f"refs/tags/{tag_name}:refs/tags/{tag_name}")
+            # El prefijo '+' en el refspec fuerza la actualización del tag en el remoto
+            prefix = "+" if force else ""
+            refspec = f"{prefix}refs/tags/{tag_name}:refs/tags/{tag_name}"
+
+            infos = remote.push(refspec)
             for info in infos:
                 if info.flags & (info.ERROR | info.REJECTED):
                     logger.error(f"Error al subir tag {tag_name}: {info.summary}")
