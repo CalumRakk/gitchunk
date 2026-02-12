@@ -7,12 +7,13 @@ from time import sleep
 from typing import Generator, Optional, cast, get_args
 
 import git
-from git import Actor, Commit, GitCommandError, List, Remote, Repo
+from git import Actor, GitCommandError, List, Remote, Repo
 from git.types import Lit_config_levels
 
 from .schemas import (
     Batchs,
     CheckUserEmail,
+    FileRename,
     GitStatus,
     StatusStaged,
     StatusUnstaged,
@@ -163,42 +164,81 @@ def fix_dubious_ownership(path: Path) -> bool:
         return False
 
 
-def get_git_status(repo: Repo) -> GitStatus:
+def get_git_status(repo: Repo):
     """
-    Obtiene el estado del repositorio de forma ultra-rápida.
-    Regla: Siempre resetea el stage para trabajar solo con el disco.
+    Obtiene el estado actual del repositorio Git.
+
+    El estado se devuelve como un diccionario con dos claves: "staged" y "unstaged".
+    "staged" contiene los archivos que han sido modificados o eliminados y
+    están en el stage, mientras que "unstaged" contiene los archivos que han sido
+    modificados o eliminados pero no están en el stage.
+
+    Los archivos en "staged" se clasifican en tres categorías:
+    - "added": Archivos nuevos que han sido añadidos al stage.
+    - "modified": Archivos existentes que han sido modificados y
+      añadidos al stage.
+    - "deleted": Archivos existentes que han sido eliminados y
+      añadidos al stage.
+    - "renamed": Archivos existentes que han sido renombrados y
+      añadidos al stage.
+
+    Los archivos en "unstaged" se clasifican en tres categorías:
+    - "modified": Archivos existentes que han sido modificados pero
+      no se han agregado al stage.
+    - "deleted": Archivos existentes que han sido eliminados pero
+      no se han agregado al stage.
+    - "untracked": Archivos que no están en el index ni en algún commit,
+      respetando .gitignore.
     """
-    repo.index.reset()
+    if repo.head.is_valid():
+        repo.index.reset()
 
-    # 2. Ejecutar git status --porcelain
-    # Es mucho más rápido que repo.index.diff() en carpetas con miles de archivos.
-    status_output = repo.git.status(porcelain=True)
-
-    unstaged = StatusUnstaged(modified=[], deleted=[], untracked=[])
-
-    if not status_output:
-        return GitStatus(
-            staged=StatusStaged(added=[], modified=[], deleted=[], renamed=[]),
-            unstaged=unstaged,
-        )
-
-    for line in status_output.splitlines():
-        # Los primeros 2 caracteres indican el estado (X e Y)
-        # Y es el estado en el Worktree (disco)
-        state = line[:2]
-        path = line[3:].strip(
-            '"'
-        )  # Git pone comillas si hay espacios o caracteres especiales
-
-        if state == "??":  # Archivo nuevo (Untracked)
-            unstaged["untracked"].append(path)
-        elif "M" in state:  # Modificado
-            unstaged["modified"].append(path)
-        elif "D" in state:  # Eliminado en disco
-            unstaged["deleted"].append(path)
-
-    # Tras el reset, el stage siempre estará vacío inicialmente
+    unstaged = StatusUnstaged(modified=[], deleted=[], untracked=repo.untracked_files)
     staged = StatusStaged(added=[], modified=[], deleted=[], renamed=[])
+
+    # repo.index.diff(None) Devuelve los archivos modificados o eliminados que aún no has pasado al stage.
+    # repo.index.diff(None) No devuelve los archivos untracked, porque aún no existe en el index (se obtienen con repo.untracked_files)
+    # repo.untracked_files Devuelve la lista archivos que no están en el index ni en ningún commit, respetando .gitignore
+    for diff in repo.index.diff(None):
+        a_path = cast(str, diff.a_path)
+        if (
+            diff.change_type == "M"
+        ):  # Archivo existente modificado, no se ha agregado a stage.
+            unstaged["modified"].append(a_path)
+        elif (
+            diff.change_type == "D"
+        ):  # Archivo existente eliminado, no se ha agregado a stage.
+            unstaged["deleted"].append(a_path)
+        else:
+            logger.error(f"Unknown change type: {diff.change_type}")
+
+    if not is_repo_new(repo):
+        for diff in repo.index.diff("HEAD"):
+            a_path = cast(str, diff.a_path)
+            if diff.change_type == "A":  # Archivo nuevo añadido a stage.
+                staged["added"].append(a_path)
+            elif (
+                diff.change_type == "M"
+            ):  # Archivo existente modificado y añadido a stage.
+                staged["modified"].append(a_path)
+            elif (
+                diff.change_type == "D"
+            ):  # Archivo existente eliminado y añadido a stage.
+                staged["deleted"].append(a_path)
+            elif (
+                diff.change_type == "R"
+            ):  # Archivo existente renombrado y añadido a stage.
+                rename_from = cast(str, diff.rename_from)
+                rename_to = cast(str, diff.rename_to)
+                staged["renamed"].append(
+                    FileRename(old_name=rename_from, new_name=rename_to)
+                )
+            else:
+                logger.error(f"Unknown change type: {diff.change_type}")
+    else:
+        for path, _stage in repo.index.entries.keys():
+            path = cast(str, path)
+            staged["added"].append(path)
 
     return GitStatus(staged=staged, unstaged=unstaged)
 
@@ -250,8 +290,9 @@ def remove_files_from_index(repo: Repo, files: List[str]) -> None:
                 logger.error(f"Error al eliminar archivos: {e}")
 
 
-def create_commits(repo: Repo, batchs: Batchs, author: Actor) -> List[Commit]:
-    commits = []
+def create_commits(
+    repo: Repo, batchs: Batchs, author: Actor
+) -> Generator[git.Commit, None, None]:
     total_steps = len(batchs["to_add"]) + (1 if batchs["to_delete"] else 0)
     current_step = 1
 
@@ -268,7 +309,7 @@ def create_commits(repo: Repo, batchs: Batchs, author: Actor) -> List[Commit]:
 
         msg = f"Batch {current_step}/{total_steps} | Delete {num_deleted} files | {get_timestamp()}"
         commit = repo.index.commit(msg, author=author, committer=author)
-        commits.append(commit)
+        yield commit
         current_step += 1
 
     for files in batchs["to_add"]:
@@ -286,13 +327,12 @@ def create_commits(repo: Repo, batchs: Batchs, author: Actor) -> List[Commit]:
         msg = f"Batch {current_step}/{total_steps} | Add {num_files} files | {get_timestamp()}"
         commit = repo.index.commit(msg, author=author, committer=author)
 
-        commits.append(commit)
+        yield commit
 
         logger.debug(f"Commit {commit.hexsha[:7]} creado exitosamente.")
         current_step += 1
 
-    logger.info(f"Proceso de commits finalizado. {len(commits)} commits generados.")
-    return commits
+    logger.info(f"Proceso de commits finalizado.")
 
 
 def is_repo_new(repo: Repo):

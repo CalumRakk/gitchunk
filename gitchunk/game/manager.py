@@ -104,14 +104,11 @@ class GameManager:
             (game_path / "GITCHUNK_RESTORE.txt").write_text(restore_info)
             files_report, batches, git_problems = repo_wrapper.analyze_changes()
 
-        commits_created = repo_wrapper.commit_changes(batches)
-        should_force_tag = commits_created > 0
-        if commits_created == 0:
-            logger.info("No hay cambios nuevos para archivar.")
-            # Continuamos de todos modos por si falta subir el tag o pushear
-
-        # SUBIDA
-        repo_wrapper.push(delay_mins=1)
+        should_force_tag = False
+        for commit in repo_wrapper.commit_changes(batches):
+            if commit:
+                repo_wrapper.push(delay_mins=1)
+                should_force_tag = True
 
         tag_created = self._ensure_tag(
             repo_wrapper, metadata.tag_name, force=should_force_tag

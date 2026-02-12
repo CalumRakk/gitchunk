@@ -72,7 +72,7 @@ class GitchunkRepo:
 
         return files_filtered, batches, git_problems
 
-    def commit_changes(self, batches: Batchs) -> int:
+    def commit_changes(self, batches: Batchs):
         """
         Ejecuta los commits basados en los lotes calculados previamente.
         """
@@ -81,13 +81,15 @@ class GitchunkRepo:
 
         if not batches["to_add"] and not batches["to_delete"]:
             logger.info("No hay cambios válidos para confirmar.")
-            return 0
+            return
 
         logger.info("Aplicando cambios al repositorio...")
-        commits = create_commits(self.repo, batches, self.author)
+        commits_created = 0
+        for commit in create_commits(self.repo, batches, self.author):
+            yield commit
+            commits_created += 1
 
-        logger.info(f"Se han generado {len(commits)} commits nuevos.")
-        return len(commits)
+        logger.info(f"Se han generado {commits_created} commits nuevos.")
 
     def ensure_identity(
         self, name: str = "Gitchunk Bot", email: str = "bot@gitchunk.local"
