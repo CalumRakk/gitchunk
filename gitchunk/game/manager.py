@@ -3,6 +3,7 @@ from pathlib import Path
 
 from git import Repo
 
+from gitchunk.chunking import FileChunker
 from gitchunk.git_manager import ephemeral_remote
 from gitchunk.github_api import GitHubClient
 from gitchunk.parsing import is_version_older, parse_version
@@ -68,6 +69,13 @@ class GameManager:
 
         # COMMITS
         files_report, batches, git_problems = repo_wrapper.analyze_changes()
+        if files_report.invalid_files:
+            logger.warning("=== ARCHIVOS OMITIDOS POR TAMAÑO ===")
+            for fname, size, reason in files_report.invalid_files:
+                size_mb = size / (1024**2)
+                logger.warning(f"  [X] {fname} ({size_mb:.2f} MB) -> {reason}")
+            logger.warning("====================================")
+            return False
         if git_problems:
             logger.warning(
                 f"[bold yellow]ADVERTENCIA DE CONFIGURACIÓN GIT[/bold yellow]\n\n"
@@ -75,12 +83,26 @@ class GameManager:
                 f"[cyan]{git_problems[0]['config']}[/cyan] -> [white]{git_problems[0]['value']}[/white]\n\n"
                 f"Si faltan archivos (como el .exe), revisa ese archivo de ignore global.",
             )
-        if files_report["invalid_files"]:
-            logger.warning("=== ARCHIVOS OMITIDOS POR TAMAÑO ===")
-            for fname, size, reason in files_report["invalid_files"]:
-                size_mb = size / (1024**2)
-                logger.warning(f"  [X] {fname} ({size_mb:.2f} MB) -> {reason}")
-            logger.warning("====================================")
+        if files_report.files_to_chunk:
+            logger.info(
+                f"Se detectaron {len(files_report.files_to_chunk)} archivos grandes. Iniciando fragmentación..."
+            )
+
+            for file_relative_path, size in files_report.files_to_chunk:
+                full_path = game_path / file_relative_path
+                chunk_limit = 90 * 1024 * 1024  # 90MB
+                FileChunker.split_file(full_path, chunk_limit)
+            metadata.has_chunks = True
+
+            logger.info("Re-analizando repositorio tras la fragmentación...")
+            files_report, batches, git_problems = repo_wrapper.analyze_changes()
+        if metadata.has_chunks:
+            restore_info = (
+                "Este backup contiene archivos fragmentados (+chunked).\n"
+                "Usa 'gitchunk restore .' para unirlos tras la descarga."
+            )
+            (game_path / "GITCHUNK_RESTORE.txt").write_text(restore_info)
+            files_report, batches, git_problems = repo_wrapper.analyze_changes()
 
         commits_created = repo_wrapper.commit_changes(batches)
         should_force_tag = commits_created > 0

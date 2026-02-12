@@ -10,10 +10,11 @@ class Batchs(TypedDict):
     to_delete: List[str]
 
 
-class FilesFiltered(TypedDict):
-    files_to_batch: List[Tuple[str, int]]
+class FilesFiltered(BaseModel):
+    files_to_batch: List[Tuple[str, int]]  # Archivos normales (< 90MB)
+    files_to_chunk: List[Tuple[str, int]]  # Archivos para fragmentar (90MB - 360MB)
     deleted_files: List[str]
-    invalid_files: List[Tuple[str, int, str]]
+    invalid_files: List[Tuple[str, int, str]]  # Archivos realmente prohibidos (> 360MB)
 
 
 class CheckUserEmail(TypedDict):

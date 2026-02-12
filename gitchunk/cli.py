@@ -217,6 +217,45 @@ def archive(
         raise typer.Exit(code=1)
 
 
+@app.command()
+def restore(
+    path: Path = typer.Argument(
+        Path("."),
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Ruta a la carpeta donde quieres restaurar los archivos fragmentados.",
+    )
+):
+    """
+    Busca archivos fragmentados (.gc.###) y los vuelve a unir en sus originales.
+    """
+    console.rule(f"[bold blue]Gitchunk Restore: {path.name}[/bold blue]")
+
+    try:
+        from gitchunk.chunking import FileChunker
+
+        with console.status(
+            "[bold green]Escaneando y reconstruyendo archivos...[/bold green]",
+            spinner="bouncingBar",
+        ):
+            FileChunker.join_files(path)
+
+        console.print(
+            Panel.fit(
+                f"[bold green]¡Restauración completada![/bold green]\n"
+                f"Se han procesado todos los archivos fragmentados en [cyan]{path.name}[/cyan].",
+                title="Éxito",
+                border_style="green",
+            )
+        )
+
+    except Exception as e:
+        console.print(f"[bold red]Fallo durante la restauración:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+
 def run_script():
     """Entrada para setup.py"""
     try:

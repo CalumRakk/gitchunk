@@ -1,29 +1,30 @@
 import logging
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class GameMetadata:
+class GameMetadata(BaseModel):
     executable_name: str
     version: str
     platform: str
-    save_id: str  # El ID único de Ren'Py (config.save_directory)
+    save_id: str
+    has_chunks: bool = False
 
     @property
     def repo_name(self) -> str:
-        """Genera el nombre estandarizado del repositorio."""
         safe_id = re.sub(r"[^a-zA-Z0-9\-_]", "-", self.save_id).lower()
         return f"gitchunk-game-{safe_id}"
 
     @property
     def tag_name(self) -> str:
-        """Genera el tag para Git: v1.0.0-pc"""
-        return f"v{self.version}-{self.platform}"
+        # Si tiene chunks, añadimos +chunked siguiendo el estándar SemVer para metadatos
+        suffix = "+chunked" if self.has_chunks else ""
+        return f"v{self.version}-{self.platform}{suffix}"
 
     @property
     def branch_name(self):

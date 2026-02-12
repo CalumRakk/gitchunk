@@ -1,2 +1,4 @@
 MAX_FILE_SIZE_BYTES: int = 90 * 1024**2  # 90MB
 MAX_BATCH_SIZE_BYTES: int = 300 * 1024**2  # 300MB
+MAX_CHUNKS: int = 4  # Máximo de trozos que aceptaremos
+MAX_TOTAL_SIZE_ALLOWED: int = MAX_CHUNKS * MAX_FILE_SIZE_BYTES

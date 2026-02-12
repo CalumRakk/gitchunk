@@ -1,7 +1,8 @@
+import hashlib
 import logging
 import re
+from pathlib import Path
 from time import sleep
-
 
 from .schemas import *
 
@@ -33,3 +34,18 @@ def sleep_progress(seconds: float):
             logger.info(f"Faltan {mins_left} minutos...")
         elif i <= 10:  # Mostrar segundos finales
             logger.info(f"{i} segundos restantes...")
+
+
+def create_md5sum_by_hashlib(path: Path):
+    """
+    Calcula el MD5 de un archivo. Si el archivo es grande (>100MB)
+    """
+    hash_md5 = hashlib.md5()
+
+    print(f"[dim]Procesando firma digital (MD5): {path.name}...[/dim]")
+
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(50 * 1024 * 1024), b""):
+            hash_md5.update(chunk)
+
+    return hash_md5.hexdigest()
