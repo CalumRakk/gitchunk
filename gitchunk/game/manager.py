@@ -7,6 +7,7 @@ from gitchunk.chunking import FileChunker
 from gitchunk.git_manager import ephemeral_remote
 from gitchunk.github_api import GitHubClient
 from gitchunk.parsing import is_version_older, parse_version
+from gitchunk.processing import batch_files
 
 from ..core import GitchunkRepo
 from .cleaner import GameCleaner
@@ -68,7 +69,7 @@ class GameManager:
         repo_wrapper.synchronize()
 
         # COMMITS
-        files_report, batches, git_problems = repo_wrapper.analyze_changes()
+        files_report, _, git_problems = repo_wrapper.analyze_changes()
         if files_report.invalid_files:
             logger.warning("=== ARCHIVOS OMITIDOS POR TAMAÑO ===")
             for fname, size, reason in files_report.invalid_files:
@@ -85,27 +86,38 @@ class GameManager:
             )
         if files_report.files_to_chunk:
             logger.info(
-                f"Se detectaron {len(files_report.files_to_chunk)} archivos grandes. Iniciando fragmentación..."
+                f"Procesando {len(files_report.files_to_chunk)} archivos grandes..."
             )
 
             for file_relative_path, size in files_report.files_to_chunk:
                 full_path = game_path / file_relative_path
-                chunk_limit = 90 * 1024 * 1024  # 90MB
-                FileChunker.split_file(full_path, chunk_limit)
-            metadata.has_chunks = True
+                chunk_limit = 90 * 1024 * 1024
 
-            logger.info("Re-analizando repositorio tras la fragmentación...")
-            files_report, batches, git_problems = repo_wrapper.analyze_changes()
+                created_chunks = FileChunker.split_file(full_path, chunk_limit)
+
+                files_report.deleted_files.append(str(file_relative_path))
+                for chunk_path in created_chunks:
+                    rel_name = chunk_path.relative_to(game_path).as_posix()
+                    chunk_size = chunk_path.stat().st_size
+                    files_report.files_to_batch.append((rel_name, chunk_size))
+
+            metadata.has_chunks = True
         if metadata.has_chunks:
-            restore_info = (
+            restore_path = game_path / "GITCHUNK_RESTORE.txt"
+            restore_msg = (
                 "Este backup contiene archivos fragmentados (+chunked).\n"
                 "Usa 'gitchunk restore .' para unirlos tras la descarga."
             )
-            (game_path / "GITCHUNK_RESTORE.txt").write_text(restore_info)
-            files_report, batches, git_problems = repo_wrapper.analyze_changes()
+            restore_path.write_text(restore_msg)
+            files_report.files_to_batch.append(
+                (restore_path.name, restore_path.stat().st_size)
+            )
+
+        files_report.files_to_chunk = []
+        final_batches = batch_files(files_report)
 
         should_force_tag = False
-        for commit in repo_wrapper.commit_changes(batches):
+        for commit in repo_wrapper.commit_changes(final_batches):
             if commit:
                 repo_wrapper.push(delay_mins=1)
                 should_force_tag = True

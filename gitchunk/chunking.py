@@ -12,7 +12,11 @@ class FileChunker:
     BLOCK_SIZE = 1024 * 1024 * 5
 
     @classmethod
-    def split_file(cls, file_path: Path, chunk_size: int) -> List[Path]:
+    def split_file(
+        cls,
+        file_path: Path,
+        chunk_size: int,
+    ) -> List[Path]:
         """
         Divide un archivo en trozos de tamaño chunk_size.
         Cada trozo se escribe primero como .tmp y se renombra al finalizar.
@@ -46,6 +50,9 @@ class FileChunker:
                                 break
                             out_tmp.write(data)
                             remaining_to_read -= len(data)
+
+                    if chunk_path_final.exists():
+                        send2trash(chunk_path_final)
 
                     chunk_path_tmp.rename(chunk_path_final)
                     chunks_creados.append(chunk_path_final)
