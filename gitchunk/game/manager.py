@@ -3,11 +3,10 @@ from pathlib import Path
 
 from git import Repo
 
-from gitchunk.chunking import FileChunker
 from gitchunk.git_manager import ephemeral_remote
 from gitchunk.github_api import GitHubClient
 from gitchunk.parsing import is_version_older, parse_version
-from gitchunk.processing import batch_files
+from gitchunk.processing import apply_file_transformations, batch_files
 
 from ..core import GitchunkRepo
 from .cleaner import GameCleaner
@@ -86,32 +85,9 @@ class GameManager:
             )
         if files_report.files_to_chunk:
             logger.info(
-                f"Procesando {len(files_report.files_to_chunk)} archivos grandes..."
+                f"Transformando {len(files_report.files_to_chunk)} archivos grandes..."
             )
-
-            for file_relative_path, size in files_report.files_to_chunk:
-                full_path = game_path / file_relative_path
-                chunk_limit = 90 * 1024 * 1024
-
-                created_chunks = FileChunker.split_file(full_path, chunk_limit)
-
-                files_report.deleted_files.append(str(file_relative_path))
-                for chunk_path in created_chunks:
-                    rel_name = chunk_path.relative_to(game_path).as_posix()
-                    chunk_size = chunk_path.stat().st_size
-                    files_report.files_to_batch.append((rel_name, chunk_size))
-
-            metadata.has_chunks = True
-        if metadata.has_chunks:
-            restore_path = game_path / "GITCHUNK_RESTORE.txt"
-            restore_msg = (
-                "Este backup contiene archivos fragmentados (+chunked).\n"
-                "Usa 'gitchunk restore .' para unirlos tras la descarga."
-            )
-            restore_path.write_text(restore_msg)
-            files_report.files_to_batch.append(
-                (restore_path.name, restore_path.stat().st_size)
-            )
+            files_report = apply_file_transformations(game_path, files_report)
 
         files_report.files_to_chunk = []
         final_batches = batch_files(files_report)

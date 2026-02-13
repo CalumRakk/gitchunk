@@ -69,3 +69,40 @@ def batch_files(files: FilesFiltered) -> Batchs:
         batchs.append(batch_current)
 
     return Batchs(to_add=batchs, to_delete=files.deleted_files)
+
+
+def apply_file_transformations(
+    game_path: Path, files_filtered: FilesFiltered
+) -> FilesFiltered:
+    """
+    Realiza las transformaciones físicas (como el chunking) y devuelve un
+    nuevo FilesFiltered actualizado para ser procesado por batch_files.
+    """
+    from gitchunk.chunking import FileChunker
+
+    # Trabajamos sobre una copia para no mutar el original inesperadamente
+    final_files = files_filtered.model_copy(deep=True)
+    chunk_limit = 90 * 1024 * 1024
+    has_transformed = False
+
+    for file_rel, size in files_filtered.files_to_chunk:
+        full_path = game_path / file_rel
+
+        created_chunks = FileChunker.split_file(full_path, chunk_limit)
+
+        final_files.deleted_files.append(str(file_rel))
+        for chunk_path in created_chunks:
+            rel_chunk = chunk_path.relative_to(game_path).as_posix()
+            final_files.files_to_batch.append((rel_chunk, chunk_path.stat().st_size))
+
+        has_transformed = True
+
+    if has_transformed:
+        restore_path = game_path / "GITCHUNK_RESTORE.txt"
+        restore_path.write_text("Usa 'gitchunk restore .' para unir los archivos.")
+        final_files.files_to_batch.append(
+            (restore_path.name, restore_path.stat().st_size)
+        )
+
+    final_files.files_to_chunk = []
+    return final_files
