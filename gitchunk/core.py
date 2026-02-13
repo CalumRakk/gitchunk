@@ -18,7 +18,11 @@ from .git_manager import (
     set_local_user_email,
     sync_with_remote_shallow,
 )
-from .processing import batch_files, filter_files_from_status
+from .processing import (
+    apply_file_transformations,
+    batch_files,
+    filter_files_from_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +34,46 @@ class GitchunkRepo:
         self.author: Optional[Actor] = None
         self.token = token
         self._remote_url: Optional[str] = None
+
         self._branch_name: str = "master"
+
+    def prepare_and_commit(self, files_report: FilesFiltered):
+        """
+        Orquesta el pipeline completo:
+        1. Transformación física (Chunking si es necesario).
+        2. Agrupación por tamaño (Batching).
+        3. Confirmación (Commit).
+        """
+        # Solo si hay archivos para fragmentar
+        if files_report.files_to_chunk:
+            logger.info(
+                f"Transformando {len(files_report.files_to_chunk)} archivos grandes..."
+            )
+            files_report = apply_file_transformations(self.path, files_report)
+
+        # Generar los grupos de archivos para los commits
+        files_report.files_to_chunk = []
+        final_batches = batch_files(files_report)
+
+        # Delegamos en el generador de commits
+        if not final_batches["to_add"] and not final_batches["to_delete"]:
+            logger.info("No hay cambios válidos para confirmar.")
+            return
+
+        yield from self._execute_commits(final_batches)
+
+    def _execute_commits(self, batches: Batchs):
+        """Método interno que realiza los commits físicos en Git."""
+        if not self.author:
+            raise ValueError("Debes llamar a ensure_identity() antes de hacer commits.")
+
+        logger.info("Aplicando cambios al repositorio...")
+        commits_created = 0
+        for commit in create_commits(self.repo, batches, self.author):
+            yield commit
+            commits_created += 1
+
+        logger.info(f"Se han generado {commits_created} commits nuevos.")
 
     @property
     def auth_url(self) -> Optional[str]:

@@ -6,7 +6,6 @@ from git import Repo
 from gitchunk.git_manager import ephemeral_remote
 from gitchunk.github_api import GitHubClient
 from gitchunk.parsing import is_version_older, parse_version
-from gitchunk.processing import apply_file_transformations, batch_files
 
 from ..core import GitchunkRepo
 from .cleaner import GameCleaner
@@ -55,45 +54,29 @@ class GameManager:
                         f"Regresión detectada: {metadata.version} < {latest_remote}"
                     )
 
-        # GESTIÓN DEL REMOTO (GitHub)
         remote_url = github_client.get_or_create_repo(metadata.repo_name)
         auth_url = github_client.get_auth_url(remote_url)
 
         cleaner.clean()
-
         repo_wrapper.ensure_identity()
-
         repo_wrapper.configure_endpoint(remote_url, metadata.branch_name)
-
         repo_wrapper.synchronize()
 
-        # COMMITS
         files_report, _, git_problems = repo_wrapper.analyze_changes()
         if files_report.invalid_files:
             logger.warning("=== ARCHIVOS OMITIDOS POR TAMAÑO ===")
             for fname, size, reason in files_report.invalid_files:
-                size_mb = size / (1024**2)
-                logger.warning(f"  [X] {fname} ({size_mb:.2f} MB) -> {reason}")
+                logger.warning(f"  [X] {fname} ({size / 1024**2:.2f} MB) -> {reason}")
             logger.warning("====================================")
             return False
+
         if git_problems:
             logger.warning(
-                f"[bold yellow]ADVERTENCIA DE CONFIGURACIÓN GIT[/bold yellow]\n\n"
-                f"Se detectó una configuración que podría ocultar archivos del juego:\n"
-                f"[cyan]{git_problems[0]['config']}[/cyan] -> [white]{git_problems[0]['value']}[/white]\n\n"
-                f"Si faltan archivos (como el .exe), revisa ese archivo de ignore global.",
+                f"Configuración de Git detectada: {git_problems[0]['config']}"
             )
-        if files_report.files_to_chunk:
-            logger.info(
-                f"Transformando {len(files_report.files_to_chunk)} archivos grandes..."
-            )
-            files_report = apply_file_transformations(game_path, files_report)
-
-        files_report.files_to_chunk = []
-        final_batches = batch_files(files_report)
 
         should_force_tag = False
-        for commit in repo_wrapper.commit_changes(final_batches):
+        for commit in repo_wrapper.prepare_and_commit(files_report):
             if commit:
                 repo_wrapper.push(delay_mins=1)
                 should_force_tag = True
