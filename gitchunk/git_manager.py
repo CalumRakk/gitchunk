@@ -3,7 +3,6 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from time import sleep
 from typing import Generator, Optional, cast, get_args
 
 import git
@@ -243,7 +242,7 @@ def get_git_status(repo: Repo):
     return GitStatus(staged=staged, unstaged=unstaged)
 
 
-def push_commits_one_by_one(repo, auth_url, branch_name, delay_minutes=5):
+def push_commits_one_by_one(repo, auth_url, branch_name):
     with ephemeral_remote(repo, auth_url, "temp_sync") as sync_remote:
         sync_remote.fetch()
 
@@ -268,9 +267,6 @@ def push_commits_one_by_one(repo, auth_url, branch_name, delay_minutes=5):
                 force_with_lease=True,
             )
             logger.info(f"Push commit {commit.hexsha} exitoso")
-            if index < len(commits):
-                logger.info(f"Esperando {delay_minutes} minutos...")
-                sleep(delay_minutes * 60)
 
 
 def batch_list(items, batch_size):

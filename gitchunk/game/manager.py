@@ -1,4 +1,6 @@
 import logging
+import random
+from datetime import timedelta
 from pathlib import Path
 
 from git import Repo
@@ -6,6 +8,7 @@ from git import Repo
 from gitchunk.git_manager import ephemeral_remote
 from gitchunk.github_api import GitHubClient
 from gitchunk.parsing import is_version_older, parse_version
+from gitchunk.utils import sleep_progress
 
 from ..core import GitchunkRepo
 from .cleaner import GameCleaner
@@ -78,8 +81,10 @@ class GameManager:
         should_force_tag = False
         for commit in repo_wrapper.prepare_and_commit(files_report):
             if commit:
-                repo_wrapper.push(delay_mins=1)
+                repo_wrapper.push()
                 should_force_tag = True
+                seconds = timedelta(minutes=random.randint(1, 10)).total_seconds()
+                sleep_progress(seconds)
 
         tag_created = self._ensure_tag(
             repo_wrapper, metadata.tag_name, force=should_force_tag

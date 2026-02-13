@@ -92,12 +92,9 @@ class GitchunkRepo:
         if self.auth_url:
             return sync_with_remote_shallow(self.repo, self.auth_url, self._branch_name)
 
-    def push(self, delay_mins: int = 5):
+    def push(self):
         return push_commits_one_by_one(
-            repo=self.repo,
-            auth_url=self.auth_url,
-            branch_name=self._branch_name,
-            delay_minutes=delay_mins,
+            repo=self.repo, auth_url=self.auth_url, branch_name=self._branch_name
         )
 
     def analyze_changes(self) -> tuple[FilesFiltered, Batchs, list[dict]]:

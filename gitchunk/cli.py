@@ -176,6 +176,12 @@ def archive(
         "-p",
         help="Nombre del perfil a usar. Si se omite, usa el default.",
     ),
+    recursive: bool = typer.Option(
+        False,
+        "--recursive",
+        "-r",
+        help="Busca juegos en subcarpetas de la carpeta principal.",
+    ),
 ):
     """
     Analiza, limpia y sube una carpeta de juego a un repositorio privado de GitHub.
@@ -196,20 +202,28 @@ def archive(
 
     try:
         manager = GameManager(acces_token=token)
+        target = path.glob("*") if recursive else [path]
+        for game_path in target:
+            if not game_path.is_dir() or game_path.name.startswith("."):
+                continue
 
-        with console.status(
-            "[bold green]Procesando juego... (Escaneando, Limpiando, Git)[/bold green]",
-            spinner="dots",
-        ):
-            manager.process_game(path)
+            with console.status(
+                "[bold green]Procesando juego... (Escaneando, Limpiando, Git)[/bold green]",
+                spinner="dots",
+            ):
+                try:
+                    manager.process_game(game_path)
+                except Exception as e:
+                    logger.error(f"Error al procesar '{game_path}': {e}")
+                    continue
 
-        console.print(
-            Panel.fit(
-                f"[bold green]¡Éxito![/bold green]\nEl juego en '{path.name}' ha sido archivado correctamente.",
-                title="Tarea Completada",
-                border_style="green",
+            console.print(
+                Panel.fit(
+                    f"[bold green]¡Éxito![/bold green]\nEl juego en '{path.name}' ha sido archivado correctamente.",
+                    title="Tarea Completada",
+                    border_style="green",
+                )
             )
-        )
 
     except Exception as e:
         logger.exception("Error crítico durante el archivado")
