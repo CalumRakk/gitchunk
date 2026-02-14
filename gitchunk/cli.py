@@ -202,7 +202,7 @@ def archive(
 
     try:
         manager = GameManager(acces_token=token)
-        target = path.glob("*") if recursive else [path]
+        target = path.glob("*") if recursive is True else [path]
         for game_path in target:
             if not game_path.is_dir() or game_path.name.startswith("."):
                 continue
