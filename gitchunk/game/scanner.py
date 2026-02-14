@@ -3,14 +3,17 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from packaging.version import Version
 from pydantic import BaseModel
+
+from gitchunk.parsing import get_comparable_version
 
 logger = logging.getLogger(__name__)
 
 
 class GameMetadata(BaseModel):
     executable_name: str
-    version: str
+    version_str: str
     platform: str
     save_id: str
     has_chunks: bool = False
@@ -21,10 +24,17 @@ class GameMetadata(BaseModel):
         return f"gitchunk-game-{safe_id}"
 
     @property
-    def tag_name(self) -> str:
+    def version(self) -> Version:
+        """Versión numérica real para comparaciones (objeto Version)."""
+        return get_comparable_version(self.version_str)
+
+    @property
+    def display_version(self) -> str:
         # Si tiene chunks, añadimos +chunked siguiendo el estándar SemVer para metadatos
         suffix = "+chunked" if self.has_chunks else ""
-        return f"v{self.version}-{self.platform}{suffix}"
+        char: str = self.version_str[0]
+        version = f"v{self.version}" if char.isdigit() else self.version_str
+        return f"{version}-{self.platform}{suffix}"
 
     @property
     def branch_name(self):
@@ -38,17 +48,17 @@ class GameScanner:
     def scan(self) -> GameMetadata:
         """Ejecuta todo el proceso de escaneo e identificación."""
         exe_name = self._find_executable()
-        version = self._extract_version(self.path.name)
+        version_str = self._extract_version(self.path.name)
         platform = self._detect_platform(self.path.name)
         save_id = self._get_renpy_save_id()
 
         logger.info(
-            f"Juego detectado: {exe_name} | Ver: {version} | Plat: {platform} | ID: {save_id}"
+            f"Juego detectado: {exe_name} | Ver: {version_str} | Plat: {platform} | ID: {save_id}"
         )
 
         return GameMetadata(
             executable_name=exe_name,
-            version=version,
+            version_str=version_str,
             platform=platform,
             save_id=save_id,
         )

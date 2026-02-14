@@ -119,7 +119,10 @@ class GitHubClient:
             return False
 
     def get_remote_tags(self, owner: str, repo_name: str) -> list[str]:
-        """Obtiene la lista de nombres de etiquetas del repositorio."""
+        """Obtiene la lista de nombres de etiquetas del repositorio.
+
+        Github no garantiza un orden específico, pero suele devolverlas de la más reciente a la más antigua.
+        """
         url = f"{self.base_url}/repos/{owner}/{repo_name}/tags"
         response = requests.get(url, headers=self.headers)
         if response.status_code == 200:

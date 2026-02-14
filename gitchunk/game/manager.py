@@ -7,7 +7,7 @@ from git import Repo
 
 from gitchunk.git_manager import ephemeral_remote
 from gitchunk.github_api import GitHubClient
-from gitchunk.parsing import is_version_older, parse_version
+from gitchunk.parsing import get_comparable_version, grouped_by_platform
 from gitchunk.utils import sleep_progress
 
 from ..core import GitchunkRepo
@@ -40,21 +40,20 @@ class GameManager:
         username = github_client.get_authenticated_user()
         if github_client.repo_exists(username, metadata.repo_name):
             remote_tags = github_client.get_remote_tags(username, metadata.repo_name)
-            platform_suffix = f"-{metadata.platform}"
-            versions_in_platform = [
-                t.replace("v", "").replace(platform_suffix, "")
-                for t in remote_tags
-                if t.endswith(platform_suffix)
-            ]
-            if versions_in_platform:
-                latest_remote = max(versions_in_platform, key=parse_version)
-                if is_version_older(metadata.version, latest_remote):
+            grouped = grouped_by_platform(remote_tags)
+            exists_platform = metadata.platform in grouped
+            if exists_platform:
+                # Gracias al no aceptar la degresion de version, se da por hecho que la version MAYOR subida de esa plataforma es la mas reciente.
+                latest_remote_version = max(
+                    [get_comparable_version(v) for v in grouped[metadata.platform]]
+                )
+                if metadata.version < latest_remote_version:
                     logger.error(
-                        f"FALLA DE LÓGICA: Intentando archivar {metadata.version} "
-                        f"pero el remoto ya tiene la versión {latest_remote} para {metadata.platform}."
+                        f"REGRESIÓN: Intentando subir {metadata.display_version} (Lógica: {metadata.version}) "
+                        f"pero el remoto ya tiene {latest_remote_version}."
                     )
                     raise ValueError(
-                        f"Regresión detectada: {metadata.version} < {latest_remote}"
+                        f"Regresión detectada: {metadata.display_version} < {latest_remote_version}"
                     )
 
         remote_url = github_client.get_or_create_repo(metadata.repo_name)
@@ -87,14 +86,17 @@ class GameManager:
                 sleep_progress(seconds)
 
         tag_created = self._ensure_tag(
-            repo_wrapper, metadata.tag_name, force=should_force_tag
+            repo_wrapper, metadata.display_version, force=should_force_tag
         )
         if tag_created:
             logger.info(
-                f"Etiqueta {metadata.tag_name} {'actualizada' if should_force_tag else 'creada'}."
+                f"Etiqueta {metadata.display_version} {'actualizada' if should_force_tag else 'creada'}."
             )
             self.push_tag_securely(
-                repo_wrapper.repo, auth_url, metadata.tag_name, force=should_force_tag
+                repo_wrapper.repo,
+                auth_url,
+                metadata.display_version,
+                force=should_force_tag,
             )
 
         logger.info(f"=== Proceso finalizado para {metadata.save_id} ===")
